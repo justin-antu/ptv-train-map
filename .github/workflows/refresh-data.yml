@@ -12,6 +12,13 @@ name: Refresh live Metro Trains Melbourne data
 # than every 5 minutes), without spamming the Actions scheduler. Each fetch
 # covers ~300 (line, station) pairs but uses bounded concurrency (see
 # scripts/lib/concurrency.ts), so a full fetch takes well under a minute.
+#
+# IMPORTANT: commits pushed here are authored using this workflow's own
+# automatic GITHUB_TOKEN, and GitHub explicitly prevents GITHUB_TOKEN-authored
+# pushes from triggering *other* `on: push` workflows (loop prevention) — so
+# deploy.yml's `on: push` listener never fires for these commits on its own.
+# The final step below works around that by explicitly dispatching deploy.yml
+# via `workflow_dispatch`, which is *not* subject to that restriction.
 
 on:
   schedule:
@@ -20,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: refresh-data
@@ -46,6 +54,7 @@ jobs:
         run: npm ci
 
       - name: Fetch live data a few times and commit each snapshot
+        id: fetch
         env:
           PTV_DEV_ID: ${{ secrets.PTV_DEV_ID }}
           PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
@@ -60,6 +69,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          changed=false
+
           for i in $(seq 1 "${SUBFETCH_COUNT}"); do
             echo "--- Fetch attempt ${i}/${SUBFETCH_COUNT} ---"
             if npx tsx scripts/fetch-live-data.ts; then
@@ -68,6 +79,7 @@ jobs:
                 git commit -m "chore(data): refresh live Metro Trains Melbourne departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
                 git pull --rebase --autostash
                 git push
+                changed=true
               else
                 echo "No change in live data snapshot; skipping commit."
               fi
@@ -79,3 +91,15 @@ jobs:
               sleep "${SUBFETCH_INTERVAL_SECONDS}"
             fi
           done
+
+          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger a Pages deploy for the new data
+        # Only needed if at least one commit was actually pushed above, and
+        # only once per job run regardless of how many of the sub-fetches
+        # produced a new commit — deploying just deploys whatever is
+        # currently at the tip of main, so only the final state matters.
+        if: steps.fetch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy.yml --ref main
