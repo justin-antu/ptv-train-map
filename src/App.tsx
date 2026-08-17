@@ -36,6 +36,15 @@ export default function App() {
   const favouriteStation = favourite.favouriteId ? stationsById.get(favourite.favouriteId) : undefined;
   const notifications = useNotifications(favourite.favouriteId, favouriteStation, live.runs);
 
+  const disruptionCount = useMemo(
+    () => new Set(Object.values(live.disruptionsByLine).flat().map((d) => d.id)).size,
+    [live.disruptionsByLine],
+  );
+  // "Active" = lines currently running at least one train, per the live data
+  // snapshot — distinct from (and more meaningful here than) which lines the
+  // user has toggled on in the legend, which is just a display preference.
+  const linesWithActiveService = useMemo(() => new Set(live.runs.map((r) => r.lineId)).size, [live.runs]);
+
   const flyToAndSelect = useCallback((station: StationStatic) => {
     mapRef.current?.flyToStation(station);
     setSelection({ kind: "station", stationId: station.id });
@@ -115,7 +124,14 @@ export default function App() {
           </main>
 
           <aside className="hidden border-border lg:order-none lg:block lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-l">
-            <RightPanePlaceholder />
+            <RightPanePlaceholder
+              stats={{
+                trainsRunning: live.runs.length,
+                linesActive: linesWithActiveService,
+                stationCount: staticData.stations.length,
+                disruptionCount,
+              }}
+            />
           </aside>
         </div>
 
