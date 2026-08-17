@@ -134,7 +134,16 @@ export function computeTrainPositions(
         let lon: number;
         let lat: number;
         if (distA === undefined || distB === undefined) {
-          // Fallback: straight-line interpolation if a station wasn't found on the polyline.
+          // Fallback: straight-line interpolation if a station wasn't found on the
+          // polyline. This should be rare/never in practice (every station in a
+          // line's own stationIds gets a distance in buildInterpolationContext) —
+          // warn loudly if it ever happens, since unlike the polyline-following
+          // path above, a straight-line lerp between two stations isn't bounded
+          // to the track and can visibly cut across land/water for stations that
+          // are far apart.
+          console.warn(
+            `[interpolate] station missing from line "${run.lineId}"'s distance map (falling back to straight-line lerp): ${stationA.id}=${distA}, ${stationB.id}=${distB}`,
+          );
           lon = stationA.lon + (stationB.lon - stationA.lon) * progress;
           lat = stationA.lat + (stationB.lat - stationA.lat) * progress;
         } else {

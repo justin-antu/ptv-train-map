@@ -33,21 +33,47 @@ export function cumulativeDistances(polyline: LonLat[]): number[] {
 
 /**
  * Finds how far along the polyline (in metres from the start) the nearest point
- * to `target` is. Uses nearest-vertex matching (not full segment projection) —
- * simple and accurate enough given the fine-grained GTFS shape points, and much
- * cheaper to compute for a handful of stations at build/load time.
+ * to `target` is.
+ *
+ * This projects `target` onto every *segment* (not just every vertex) and picks
+ * the closest projection. Nearest-vertex-only matching was tried first and is
+ * usually fine given how fine-grained GTFS shape points normally are, but a
+ * handful of real segments in this network's shape data are much coarser
+ * (multi-kilometre gaps between consecutive shape points on some outer sections,
+ * e.g. Craigieburn-Roxburgh Park, Pakenham-Cardinia Road, Cranbourne-Merinda
+ * Park, and the Stony Point branch) — for those, snapping a station to its
+ * nearest *vertex* can be off by up to ~half that segment's length, which then
+ * shows up as trains cutting a visible corner off the real track. Projecting
+ * onto the nearest segment (using a flat-plane approximation for the local
+ * projection, which is accurate enough at these distances) fixes that.
  */
 export function nearestDistanceAlong(polyline: LonLat[], cumDist: number[], target: LonLat): number {
-  let bestIndex = 0;
+  if (polyline.length === 1) return 0;
+
   let bestDist = Infinity;
-  for (let i = 0; i < polyline.length; i++) {
-    const d = haversineMeters(polyline[i], target);
+  let bestSegIndex = 0;
+  let bestT = 0;
+
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const [ax, ay] = polyline[i];
+    const [bx, by] = polyline[i + 1];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((target[0] - ax) * dx + (target[1] - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const proj: LonLat = [ax + t * dx, ay + t * dy];
+    const d = haversineMeters(proj, target);
     if (d < bestDist) {
       bestDist = d;
-      bestIndex = i;
+      bestSegIndex = i;
+      bestT = t;
     }
   }
-  return cumDist[bestIndex];
+
+  const segStart = cumDist[bestSegIndex];
+  const segEnd = cumDist[bestSegIndex + 1];
+  return segStart + (segEnd - segStart) * bestT;
 }
 
 /** Interpolates a lon/lat point at a given cumulative distance along the polyline. */

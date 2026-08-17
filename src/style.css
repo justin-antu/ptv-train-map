@@ -151,7 +151,23 @@ body {
 }
 
 .train-marker {
-  position: relative;
+  /* MapLibre's own .maplibregl-marker rule (applied to this same element) sets
+   * position: absolute; left: 0; top: 0 and relies on that for its
+   * `transform: translate(Xpx, Ypx)` positioning to be relative to the map
+   * container's origin. We must match position: absolute here too (not
+   * `relative`) — otherwise, since this rule and MapLibre's have equal CSS
+   * specificity (one class each) and this stylesheet is imported after
+   * maplibre-gl.css, ours would win the cascade and silently override
+   * MapLibre's `absolute` with `relative`. That leaves the element in normal
+   * document flow, so its translate() transform is applied on top of its
+   * in-flow layout position (which shifts further down the page for every
+   * marker added before it) instead of the map's top-left corner — the
+   * marker's *reported* lon/lat and its `style.transform` string stay
+   * correct, but the browser renders it far from where it should be, with
+   * the offset growing with DOM insertion order (hence e.g. a "line of dots"
+   * marching away from the real network as more trains are added).
+   */
+  position: absolute;
   width: 22px;
   height: 22px;
   cursor: default;

@@ -63,6 +63,20 @@ export function createMap(container: HTMLElement, staticData: NetworkStaticData)
     bounds: computeBounds(staticData),
     fitBoundsOptions: { padding: 32 },
     attributionControl: { compact: true },
+    // This is a single-city map that never needs to pan across the antimeridian,
+    // so we don't need MapLibre to render/track multiple wrapped copies of the
+    // world. This also sidesteps a real bug we hit: Marker's internal position
+    // update logic, when renderWorldCopies is on (the default), re-picks the
+    // "closest" world-copy of a marker's longitude by comparing against that
+    // marker's *previous* projected screen position — for our custom train
+    // markers (whose geographic position can jump by a non-trivial screen
+    // distance between updates, e.g. a fast interpolation step or a marker's
+    // very first placement), this occasionally chose the wrong copy and left
+    // the marker rendered many kilometres from its real (correct) position,
+    // even though marker.getLngLat() and our own position data were always
+    // correct — a purely visual MapLibre-side symptom, not a bug in our own
+    // position math.
+    renderWorldCopies: false,
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   return map;

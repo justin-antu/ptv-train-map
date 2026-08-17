@@ -14,16 +14,23 @@ export class TrainMarkerLayer {
     const seen = new Set<string>();
 
     for (const pos of positions) {
-      seen.add(pos.runRef);
-      let marker = this.markers.get(pos.runRef);
+      // Keyed by lineId+runRef, not runRef alone: PTV's run_ref values are not
+      // documented as globally unique across different routes/lines, so two
+      // unrelated trains on different lines could in principle share the same
+      // run_ref. Keying by runRef alone would then make them alias to a single
+      // marker that flickers between both lines' (unrelated) positions.
+      const key = `${pos.lineId}:${pos.runRef}`;
+      seen.add(key);
+      let marker = this.markers.get(key);
       if (!marker) {
         const el = document.createElement("div");
         el.className = "train-marker";
+        el.dataset.key = key;
         el.innerHTML = `<span class="train-marker-dot"></span><span class="train-marker-icon">🚆</span>`;
         marker = new maplibregl.Marker({ element: el, anchor: "center" });
         marker.setLngLat([pos.lon, pos.lat]);
         marker.addTo(this.map);
-        this.markers.set(pos.runRef, marker);
+        this.markers.set(key, marker);
       }
       const el = marker.getElement();
       el.title = `To ${pos.destinationName}`;
@@ -32,10 +39,10 @@ export class TrainMarkerLayer {
       marker.setLngLat([pos.lon, pos.lat]);
     }
 
-    for (const [runRef, marker] of this.markers) {
-      if (!seen.has(runRef)) {
+    for (const [key, marker] of this.markers) {
+      if (!seen.has(key)) {
         marker.remove();
-        this.markers.delete(runRef);
+        this.markers.delete(key);
       }
     }
   }
