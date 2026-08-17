@@ -11,6 +11,21 @@ export interface UpcomingStop {
 }
 
 /**
+ * Minutes late (0 or negative = on time/early) derived from a stop's
+ * `timeUtc - scheduledTimeUtc`. Falls back to 0 (treated as on-time) if
+ * either timestamp is missing or unparsable, rather than propagating `NaN`
+ * into the UI — real-world live snapshots occasionally lack one of these
+ * fields (e.g. an older/partial data snapshot), and that should never be
+ * allowed to surface as a "+NaN min" badge.
+ */
+export function delayMinutesFor(stop: { timeUtc: string; scheduledTimeUtc: string }): number {
+  const t = Date.parse(stop.timeUtc);
+  const scheduled = Date.parse(stop.scheduledTimeUtc);
+  if (Number.isNaN(t) || Number.isNaN(scheduled)) return 0;
+  return Math.round((t - scheduled) / 60_000);
+}
+
+/**
  * Every still-upcoming predicted stop at `station`, across every line that
  * serves it, sorted soonest first. This is the single source of truth for
  * "what's coming up at this station" — used both by the station info card
@@ -31,7 +46,7 @@ export function upcomingStopsForStation(station: StationStatic, runs: LiveRun[],
         runRef: run.runRef,
         timeUtc: stop.timeUtc,
         scheduledTimeUtc: stop.scheduledTimeUtc,
-        delayMin: Math.round((t - Date.parse(stop.scheduledTimeUtc)) / 60_000),
+        delayMin: delayMinutesFor(stop),
       });
     }
   }

@@ -1,4 +1,5 @@
 import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
+import { delayMinutesFor } from "../data/departures";
 import { cumulativeDistances, nearestDistanceAlong, pointAtDistance } from "./polylineGeo";
 
 export interface TrainPosition {
@@ -17,10 +18,6 @@ export interface TrainPosition {
    * means on time/early. Rounded to the nearest minute.
    */
   delayMin: number;
-}
-
-function delayMinutesFor(stop: { timeUtc: string; scheduledTimeUtc: string }): number {
-  return Math.round((Date.parse(stop.timeUtc) - Date.parse(stop.scheduledTimeUtc)) / 60_000);
 }
 
 /** Per-line geometry needed to interpolate along that line's own polyline/station positions. */
