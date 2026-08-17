@@ -1,0 +1,77 @@
+name: Refresh live Lilydale data
+
+# Runs on a schedule to fetch live/predicted departures from the PTV Timetable
+# API and commit the resulting snapshot (public/data/lilydale-live.json) so the
+# statically-hosted GitHub Pages site can pick it up.
+#
+# Within a single run we loop the fetch a few times, ~80s apart, and commit
+# after each one. This gives noticeably fresher data than the 5-minute cron
+# cadence alone would (GitHub Actions schedules don't reliably fire more often
+# than every 5 minutes), without spamming the Actions scheduler.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+env:
+  SUBFETCH_COUNT: 3
+  SUBFETCH_INTERVAL_SECONDS: 80
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch live data a few times and commit each snapshot
+        env:
+          PTV_DEV_ID: ${{ secrets.PTV_DEV_ID }}
+          PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PTV_DEV_ID:-}" ] || [ -z "${PTV_API_KEY:-}" ]; then
+            echo "::warning::PTV_DEV_ID / PTV_API_KEY secrets are not set yet — skipping live data fetch. The site will keep showing demo/sample data until these are configured (see README)."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for i in $(seq 1 "${SUBFETCH_COUNT}"); do
+            echo "--- Fetch attempt ${i}/${SUBFETCH_COUNT} ---"
+            if npx tsx scripts/fetch-live-data.ts; then
+              if ! git diff --quiet -- public/data/lilydale-live.json; then
+                git add public/data/lilydale-live.json
+                git commit -m "chore(data): refresh live Lilydale departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+                git pull --rebase --autostash
+                git push
+              else
+                echo "No change in live data snapshot; skipping commit."
+              fi
+            else
+              echo "::warning::Live data fetch attempt ${i} failed; will retry on next attempt/run."
+            fi
+
+            if [ "${i}" -lt "${SUBFETCH_COUNT}" ]; then
+              sleep "${SUBFETCH_INTERVAL_SECONDS}"
+            fi
+          done

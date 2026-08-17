@@ -1,0 +1,31 @@
+{
+  "name": "where-is-my-train",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A fun, real-time(ish) map of Metro Trains Melbourne's Lilydale line.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "generate:static-data": "tsx scripts/generate-static-data.ts",
+    "fetch:live-data": "tsx scripts/fetch-live-data.ts"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@4.62.4"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true
+  }
+}
