@@ -1,6 +1,8 @@
 import maplibregl from "maplibre-gl";
 import type { LiveRun, StationStatic } from "../shared/types";
 import type { TrainPosition } from "../trains/interpolate";
+import { formatEta, soonestPerLine, upcomingStopsForStation } from "../data/departures";
+import type { FavouriteController } from "./favourite";
 
 type ActiveTarget = { kind: "station"; stationId: string } | { kind: "train"; key: string };
 
@@ -14,6 +16,8 @@ export interface InfoCardController {
   /** Call every animation frame: keeps a train card following its train and refreshes displayed times/departures. */
   refresh(runs: LiveRun[], positions: TrainPosition[], now: number): void;
 }
+
+const DELAYED_THRESHOLD_MIN = 3;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => {
@@ -32,35 +36,10 @@ function escapeHtml(value: string): string {
   });
 }
 
-/** Formats a predicted ISO time as a short relative/absolute label, e.g. "Due", "4 min", "2:15 pm". */
-function formatEta(timeUtc: string, now: number): string {
-  const diffMs = Date.parse(timeUtc) - now;
-  if (diffMs <= 30_000) return "Due";
-  const mins = Math.round(diffMs / 60_000);
-  if (mins < 60) return `${mins} min`;
-  return new Date(timeUtc).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-/** For a station, finds the soonest still-upcoming predicted departure per line that serves it, soonest first. */
-function computeStationDepartures(
-  station: StationStatic,
-  runs: LiveRun[],
-  now: number,
-): { lineId: string; timeUtc: string }[] {
-  const soonestByLine = new Map<string, string>();
-  for (const run of runs) {
-    if (!station.lineIds.includes(run.lineId)) continue;
-    for (const stop of run.stops) {
-      if (stop.stationId !== station.id) continue;
-      const t = Date.parse(stop.timeUtc);
-      if (t < now) continue;
-      const existing = soonestByLine.get(run.lineId);
-      if (existing === undefined || t < Date.parse(existing)) soonestByLine.set(run.lineId, stop.timeUtc);
-    }
-  }
-  return [...soonestByLine.entries()]
-    .map(([lineId, timeUtc]) => ({ lineId, timeUtc }))
-    .sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc));
+/** Small "+X min" pill shown for meaningfully-late trains; on-time/early trains show nothing extra. */
+function delayBadgeHtml(delayMin: number): string {
+  if (delayMin < DELAYED_THRESHOLD_MIN) return "";
+  return `<span class="info-card-delay">+${delayMin} min</span>`;
 }
 
 /**
@@ -85,6 +64,7 @@ export function createInfoCardController(
   stationsById: Map<string, StationStatic>,
   lineNameById: Map<string, string>,
   lineColorById: Map<string, string>,
+  favourite: FavouriteController,
 ): InfoCardController {
   const popup = new maplibregl.Popup({
     closeButton: true,
@@ -96,6 +76,8 @@ export function createInfoCardController(
   let active: ActiveTarget | null = null;
   let lastHtml = "";
   let lastContentRefreshAt = 0;
+  let lastRuns: LiveRun[] = [];
+  let delegatedListenerAttached = false;
 
   popup.on("close", () => {
     active = null;
@@ -103,7 +85,7 @@ export function createInfoCardController(
   });
 
   function renderStationHtml(station: StationStatic, runs: LiveRun[], now: number): string {
-    const departures = computeStationDepartures(station, runs, now);
+    const departures = soonestPerLine(upcomingStopsForStation(station, runs, now));
     const rows = departures
       .map(
         (d) => `
@@ -111,22 +93,19 @@ export function createInfoCardController(
           <span class="legend-swatch" style="background:${lineColorById.get(d.lineId) ?? "#333"}"></span>
           <span class="info-card-line">${escapeHtml(lineNameById.get(d.lineId) ?? d.lineId)}</span>
           <span class="info-card-time">${formatEta(d.timeUtc, now)}</span>
+          ${delayBadgeHtml(d.delayMin)}
         </div>`,
       )
       .join("");
+    const starred = favourite.isFavourite(station.id);
     return `<div class="info-card">
-        <div class="info-card-title">${escapeHtml(station.name)}</div>
+        <div class="info-card-title">
+          <span class="info-card-title-text">${escapeHtml(station.name)}</span>
+          <button type="button" class="info-card-favourite${starred ? " info-card-favourite--active" : ""}" data-station-id="${escapeHtml(station.id)}" title="${starred ? "Remove as my station" : "Set as my station"}">${starred ? "\u2605" : "\u2606"}</button>
+        </div>
         <div class="info-card-subtitle">Next departures</div>
         ${rows || '<div class="info-card-empty">No upcoming departures in current data.</div>'}
       </div>`;
-  }
-
-  const DELAYED_THRESHOLD_MIN = 3;
-
-  /** Small "+X min" pill shown for meaningfully-late trains; on-time/early trains show nothing extra. */
-  function delayBadgeHtml(delayMin: number): string {
-    if (delayMin < DELAYED_THRESHOLD_MIN) return "";
-    return `<span class="info-card-delay">+${delayMin} min</span>`;
   }
 
   function renderTrainHtml(pos: TrainPosition, runs: LiveRun[], now: number): string {
@@ -149,10 +128,31 @@ export function createInfoCardController(
       </div>`;
   }
 
+  function ensureDelegatedListener(): void {
+    if (delegatedListenerAttached) return;
+    const el = popup.getElement();
+    if (!el) return;
+    delegatedListenerAttached = true;
+    el.addEventListener("click", (e) => {
+      const target = (e.target as HTMLElement).closest<HTMLElement>(".info-card-favourite");
+      if (!target) return;
+      e.stopPropagation();
+      const stationId = target.dataset.stationId;
+      if (!stationId) return;
+      favourite.toggle(stationId);
+      // Re-render immediately so the star reflects the new state without waiting for the next refresh() tick.
+      if (active?.kind === "station" && active.stationId === stationId) {
+        const station = stationsById.get(stationId);
+        if (station) setContent([station.lon, station.lat], renderStationHtml(station, lastRuns, lastContentRefreshAt));
+      }
+    });
+  }
+
   function setContent(lngLat: [number, number], html: string): void {
     lastHtml = html;
     popup.setLngLat(lngLat).setHTML(html);
     if (!popup.isOpen()) popup.addTo(map);
+    ensureDelegatedListener();
   }
 
   return {
@@ -161,12 +161,14 @@ export function createInfoCardController(
       if (!station) return;
       active = { kind: "station", stationId };
       lastContentRefreshAt = now;
+      lastRuns = runs;
       setContent([station.lon, station.lat], renderStationHtml(station, runs, now));
     },
 
     showTrain(pos, runs, now) {
       active = { kind: "train", key: `${pos.lineId}:${pos.runRef}` };
       lastContentRefreshAt = now;
+      lastRuns = runs;
       setContent([pos.lon, pos.lat], renderTrainHtml(pos, runs, now));
     },
 
@@ -178,6 +180,7 @@ export function createInfoCardController(
     refresh(runs, positions, now) {
       if (!active) return;
       const current = active;
+      lastRuns = runs;
 
       if (current.kind === "train") {
         const pos = positions.find((p) => `${p.lineId}:${p.runRef}` === current.key);

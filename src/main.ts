@@ -5,6 +5,7 @@ import { loadStaticData, pollLiveData } from "./data/loadData";
 import { addLineAndStations, createMap, queryStationIdAt, setupStationHoverCursor, setVisibleLines } from "./map/map";
 import { createLegend } from "./map/legend";
 import { createInfoCardController } from "./map/infoCard";
+import { createFavouriteBoard } from "./map/favourite";
 import { startAnimationLoop } from "./trains/animate";
 import { buildInterpolationContext, computeTrainPositions } from "./trains/interpolate";
 import { TrainMarkerLayer } from "./trains/trainMarkers";
@@ -27,6 +28,7 @@ app.innerHTML = `
       times at each station (the PTV Timetable API doesn't expose live GPS for
       trains) &mdash; so treat this as "roughly where the train should be", not exact GPS.
     </p>
+    <div class="fav-board" id="fav-board"></div>
     <div class="legend" id="legend"></div>
   </div>
 `;
@@ -36,10 +38,12 @@ async function main() {
   const statusText = document.getElementById("status-text");
   const demoBadge = document.getElementById("demo-badge");
   const legendContainer = document.getElementById("legend");
-  if (!mapContainer || !statusText || !demoBadge || !legendContainer) return;
+  const favBoardContainer = document.getElementById("fav-board");
+  if (!mapContainer || !statusText || !demoBadge || !legendContainer || !favBoardContainer) return;
 
   const staticData = await loadStaticData();
   const map = createMap(mapContainer, staticData);
+  (window as unknown as { __WIMT_MAP__?: unknown }).__WIMT_MAP__ = map;
   addLineAndStations(map, staticData);
   setupStationHoverCursor(map);
 
@@ -48,10 +52,26 @@ async function main() {
   const stationsById = new Map(staticData.stations.map((s) => [s.id, s]));
   const interpolationContext = buildInterpolationContext(staticData);
 
-  const infoCard = createInfoCardController(map, stationsById, lineNameById, lineColorById);
+  // The favourite board's "jump to my station" click is wired up after both it
+  // and the info card exist (they're mutually referential: the info card needs
+  // the favourite controller to render the star, the board needs the info card
+  // to open on click) — this indirection avoids a circular construction order.
+  let onFavouriteStationClick: ((stationId: string) => void) | undefined;
+  const favourite = createFavouriteBoard(favBoardContainer, stationsById, lineNameById, lineColorById, (stationId) =>
+    onFavouriteStationClick?.(stationId),
+  );
+
+  const infoCard = createInfoCardController(map, stationsById, lineNameById, lineColorById, favourite);
   const trainMarkers = new TrainMarkerLayer(map, lineColorById, (pos) => {
     infoCard.showTrain(pos, currentRuns, Date.now());
   });
+
+  onFavouriteStationClick = (stationId) => {
+    const station = stationsById.get(stationId);
+    if (!station) return;
+    map.flyTo({ center: [station.lon, station.lat], zoom: Math.max(map.getZoom(), 12), essential: true });
+    infoCard.showStation(stationId, currentRuns, Date.now());
+  };
 
   // A click that doesn't land on a station dot (train marker clicks never reach
   // this handler at all — see infoCard.ts's doc comment) dismisses any open card.
@@ -93,6 +113,7 @@ async function main() {
     const visiblePositions = positions.filter((p) => visibleLineIds.has(p.lineId));
     trainMarkers.update(visiblePositions);
     infoCard.refresh(currentRuns, visiblePositions, now);
+    favourite.update(currentRuns, now);
   });
 }
 

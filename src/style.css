@@ -86,6 +86,90 @@ body {
   color: #777;
 }
 
+.fav-board {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  flex: none;
+}
+
+.fav-board-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.fav-board-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.fav-board-name {
+  display: block;
+  margin-top: 1px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #152c6b;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fav-board-name:hover {
+  text-decoration: underline;
+}
+
+.fav-board-remove {
+  flex: none;
+  border: none;
+  background: none;
+  color: #999;
+  font-size: 12px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.fav-board-remove:hover {
+  color: #333;
+}
+
+.fav-board-rows {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+
+.fav-board-notify {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: #555;
+  cursor: pointer;
+}
+
+.fav-board-notify input {
+  margin: 0;
+  flex: none;
+}
+
+.fav-board-notify-msg {
+  font-size: 10px;
+  color: #a33;
+  margin-top: 2px;
+}
+
 .legend {
   margin-top: 12px;
   padding-top: 10px;
@@ -345,6 +429,28 @@ body {
   font-weight: 700;
   margin-bottom: 2px;
   padding-right: 14px;
+}
+
+.info-card-title-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-card-favourite {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  font-size: 17px;
+  line-height: 1;
+  color: #ccad3c;
+  cursor: pointer;
+}
+
+.info-card-favourite--active {
+  color: #d19b00;
 }
 
 .info-card-subtitle {
