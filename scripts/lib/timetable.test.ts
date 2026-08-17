@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import {
+  canonicalizeGtfsStops,
+  canonicalStopSequence,
   melbourneDateRange,
   parseGtfsTime,
+  selectCanonicalStopTimes,
   unionStationOrder,
   validateTimetable,
+  type GtfsStopRecord,
+  type RawStopTime,
 } from "./timetable.ts";
 import type { NetworkTimetableData } from "../../src/shared/types.ts";
 
@@ -20,6 +25,102 @@ assert.deepEqual(
 
 // Opposite directions are independently ordered, not reversed after unioning.
 assert.deepEqual(unionStationOrder([["c", "b", "a"]]), ["c", "b", "a"]);
+
+const gtfsStops: GtfsStopRecord[] = [
+  {
+    id: "vic:rail:FSS",
+    name: "Flinders Street Railway Station",
+    lat: -37.8183,
+    lon: 144.967,
+    locationType: "1",
+    parentStation: "",
+  },
+  {
+    id: "11212",
+    name: "Flinders Street Station",
+    lat: -37.81809,
+    lon: 144.96627,
+    locationType: "",
+    parentStation: "vic:rail:FSS",
+  },
+  {
+    id: "12203",
+    name: "Flinders Street Station",
+    lat: -37.81876,
+    lon: 144.96674,
+    locationType: "",
+    parentStation: "vic:rail:FSS",
+  },
+  {
+    id: "22238",
+    name: "Flinders Street Station",
+    lat: -37.81831,
+    lon: 144.96696,
+    locationType: "",
+    parentStation: "vic:rail:FSS",
+  },
+  {
+    id: "near-platform-1",
+    name: "Example Station",
+    lat: -37.8,
+    lon: 144.9,
+    locationType: "",
+    parentStation: "",
+  },
+  {
+    id: "near-platform-2",
+    name: "Example Railway Station",
+    lat: -37.8002,
+    lon: 144.9002,
+    locationType: "",
+    parentStation: "",
+  },
+  {
+    id: "distant-same-name",
+    name: "Example Station",
+    lat: -38.8,
+    lon: 145.9,
+    locationType: "",
+    parentStation: "",
+  },
+];
+const canonical = canonicalizeGtfsStops(gtfsStops);
+
+// Declared GTFS platforms and the station parent produce one stable column.
+assert.equal(canonical.get("11212")?.key, canonical.get("vic:rail:FSS")?.key);
+assert.equal(canonical.get("12203")?.key, canonical.get("22238")?.key);
+assert.equal(canonical.get("11212")?.id, "flinders-street");
+assert.equal(canonical.get("11212")?.name, "Flinders Street");
+
+// Parent-less platforms can use the guarded name/coordinate fallback, while a
+// genuinely distinct station with the same display name remains separate.
+assert.equal(canonical.get("near-platform-1")?.key, canonical.get("near-platform-2")?.key);
+assert.notEqual(canonical.get("near-platform-1")?.key, canonical.get("distant-same-name")?.key);
+assert.notEqual(canonical.get("near-platform-1")?.id, canonical.get("distant-same-name")?.id);
+
+const rawStops: RawStopTime[] = [
+  { stopId: "11212", sequence: 4, minutes: 501 },
+  { stopId: "12203", sequence: 5, minutes: 503 },
+  { stopId: "22238", sequence: 6, minutes: 504 },
+];
+const flindersKey = canonical.get("11212")!.key;
+
+// Multiple raw Flinders variants collapse to one station visit and one cell.
+assert.deepEqual(canonicalStopSequence(rawStops, canonical), [flindersKey]);
+assert.deepEqual([...selectCanonicalStopTimes(rawStops, canonical)], [[flindersKey, 501]]);
+
+// Canonicalization happens before branch union, preserving branch-aware order.
+const cityKey = canonical.get("near-platform-1")!.key;
+const branchA = canonical.get("11212")!.key;
+const branchB = canonical.get("distant-same-name")!.key;
+const orderedBranches = [branchA, branchB].sort();
+assert.deepEqual(
+  unionStationOrder([
+    ["trunk", cityKey, branchA, "terminus-a"],
+    ["trunk", cityKey, branchB, "terminus-b"],
+  ]),
+  ["trunk", cityKey, ...orderedBranches, "terminus-a", "terminus-b"],
+);
 
 // GTFS permits service-day times beyond 24:00 for trips crossing midnight.
 assert.equal(parseGtfsTime("25:17:30"), 1517.5);

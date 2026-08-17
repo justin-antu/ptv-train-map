@@ -22,10 +22,25 @@ interface TripInfo {
   activeDates: string[];
 }
 
-interface RawStopTime {
+export interface RawStopTime {
   stopId: string;
   sequence: number;
   minutes: number;
+}
+
+export interface GtfsStopRecord {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  locationType: string;
+  parentStation: string;
+}
+
+export interface CanonicalStation {
+  key: string;
+  id: string;
+  name: string;
 }
 
 interface CalendarRule {
@@ -81,6 +96,125 @@ export function parseGtfsTime(value: string): number {
   const match = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/.exec(value.trim());
   if (!match) throw new Error(`Invalid GTFS time "${value}"`);
   return Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 60;
+}
+
+function stationName(value: string): string {
+  return value.replace(/\s+Railway Station$|\s+Station$/i, "").trim();
+}
+
+function normalizedStationIdentity(value: string): string {
+  return stationName(value).normalize("NFKD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("en-AU")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function distanceMetres(a: GtfsStopRecord, b: GtfsStopRecord): number {
+  const radians = Math.PI / 180;
+  const lat1 = a.lat * radians;
+  const lat2 = b.lat * radians;
+  const deltaLat = (b.lat - a.lat) * radians;
+  const deltaLon = (b.lon - a.lon) * radians;
+  const haversine = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+/**
+ * Resolves GTFS platform stops to stable station identities. A declared
+ * parent_station is authoritative. The coordinate fallback is deliberately
+ * name-scoped and distance-limited so equally named but geographically
+ * distinct stations cannot be merged.
+ */
+export function canonicalizeGtfsStops(records: GtfsStopRecord[]): Map<string, CanonicalStation> {
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const keyByStop = new Map<string, string>();
+  const representativeByKey = new Map<string, GtfsStopRecord>();
+  const fallbackAnchors = new Map<string, GtfsStopRecord[]>();
+  const sorted = [...records].sort((a, b) =>
+    normalizedStationIdentity(a.name).localeCompare(normalizedStationIdentity(b.name))
+    || a.lat - b.lat
+    || a.lon - b.lon
+    || a.id.localeCompare(b.id));
+
+  for (const record of sorted) {
+    let key: string;
+    let representative = record;
+    if (record.parentStation) {
+      key = `parent:${record.parentStation}`;
+      representative = byId.get(record.parentStation) ?? record;
+    } else if (record.locationType === "1") {
+      key = `parent:${record.id}`;
+    } else {
+      const identity = normalizedStationIdentity(record.name);
+      const coordinatesAreUsable = Number.isFinite(record.lat) && Number.isFinite(record.lon);
+      const anchors = fallbackAnchors.get(identity) ?? [];
+      const anchor = coordinatesAreUsable
+        ? anchors.find((candidate) => distanceMetres(candidate, record) <= 500)
+        : undefined;
+      if (anchor) {
+        key = keyByStop.get(anchor.id)!;
+        representative = representativeByKey.get(key) ?? anchor;
+      } else {
+        key = coordinatesAreUsable
+          ? `fallback:${identity}:${record.lat.toFixed(5)}:${record.lon.toFixed(5)}`
+          : `stop:${record.id}`;
+        anchors.push(record);
+        fallbackAnchors.set(identity, anchors);
+      }
+    }
+    keyByStop.set(record.id, key);
+    if (!representativeByKey.has(key) || representative.id === record.id) {
+      representativeByKey.set(key, representative);
+    }
+  }
+
+  const keysByBaseId = new Map<string, string[]>();
+  for (const [key, representative] of representativeByKey) {
+    const baseId = lineIdFromName(stationName(representative.name));
+    const keys = keysByBaseId.get(baseId) ?? [];
+    keys.push(key);
+    keysByBaseId.set(baseId, keys);
+  }
+  for (const keys of keysByBaseId.values()) keys.sort();
+
+  return new Map(records.map((record) => {
+    const key = keyByStop.get(record.id)!;
+    const representative = representativeByKey.get(key)!;
+    const name = stationName(representative.name);
+    const baseId = lineIdFromName(name);
+    const collidingKeys = keysByBaseId.get(baseId) ?? [key];
+    const id = collidingKeys.length === 1 ? baseId : `${baseId}-${collidingKeys.indexOf(key) + 1}`;
+    return [record.id, { key, id, name }];
+  }));
+}
+
+export function canonicalStopSequence(
+  stops: RawStopTime[],
+  canonicalByStop: Map<string, CanonicalStation>,
+): string[] {
+  const result: string[] = [];
+  for (const stop of [...stops].sort((a, b) => a.sequence - b.sequence || a.stopId.localeCompare(b.stopId))) {
+    const key = canonicalByStop.get(stop.stopId)?.key;
+    if (key && result.at(-1) !== key) result.push(key);
+  }
+  return result;
+}
+
+/**
+ * One timetable column represents one station visit. If malformed or
+ * loop-shaped input calls at the same canonical station more than once, retain
+ * the first call by stop_sequence (then raw stop_id) rather than allowing file
+ * order or a later platform row to overwrite it.
+ */
+export function selectCanonicalStopTimes(
+  stops: RawStopTime[],
+  canonicalByStop: Map<string, CanonicalStation>,
+): Map<string, number> {
+  const selected = new Map<string, number>();
+  for (const stop of [...stops].sort((a, b) => a.sequence - b.sequence || a.stopId.localeCompare(b.stopId))) {
+    const key = canonicalByStop.get(stop.stopId)?.key;
+    if (key && !selected.has(key)) selected.set(key, Math.round(stop.minutes * 10) / 10);
+  }
+  return selected;
 }
 
 /**
@@ -164,10 +298,18 @@ async function loadGtfs(gtfsDir: string, dates: string[]) {
     }
   });
 
-  const stopNames = new Map<string, string>();
+  const stopRecords: GtfsStopRecord[] = [];
   await streamCsv(path.join(gtfsDir, "stops.txt"), (row) => {
-    stopNames.set(row.stop_id, row.stop_name.replace(/\s+Railway Station$|\s+Station$/i, "").trim());
+    stopRecords.push({
+      id: row.stop_id,
+      name: row.stop_name,
+      lat: Number(row.stop_lat),
+      lon: Number(row.stop_lon),
+      locationType: row.location_type,
+      parentStation: row.parent_station,
+    });
   });
+  const canonicalByStop = canonicalizeGtfsStops(stopRecords);
 
   const calendars = new Map<string, CalendarRule>();
   const calendarPath = path.join(gtfsDir, "calendar.txt");
@@ -228,40 +370,48 @@ async function loadGtfs(gtfsDir: string, dates: string[]) {
     stopTimes.set(row.trip_id, values);
   });
 
-  return { routesById, stopNames, trips, stopTimes };
+  return { routesById, canonicalByStop, trips, stopTimes };
 }
 
 function buildDirection(
   directionId: string,
   routeTrips: TripInfo[],
   stopTimes: Map<string, RawStopTime[]>,
-  stopNames: Map<string, string>,
+  canonicalByStop: Map<string, CanonicalStation>,
   dates: string[],
 ): TimetableDirection | null {
   const usable = routeTrips
-    .map((trip) => ({ trip, stops: [...(stopTimes.get(trip.id) ?? [])].sort((a, b) => a.sequence - b.sequence) }))
+    .map((trip) => ({
+      trip,
+      stops: [...(stopTimes.get(trip.id) ?? [])].sort((a, b) => a.sequence - b.sequence || a.stopId.localeCompare(b.stopId)),
+    }))
     .filter(({ stops }) => stops.length >= 2);
   if (usable.length === 0) return null;
 
-  const stationStopIds = unionStationOrder(usable.map(({ stops }) => stops.map((stop) => stop.stopId)));
-  const columnByStop = new Map(stationStopIds.map((stopId, index) => [stopId, index]));
+  const stationKeys = unionStationOrder(usable.map(({ stops }) => canonicalStopSequence(stops, canonicalByStop)));
+  const stationByKey = new Map(
+    [...canonicalByStop.values()].map((station) => [station.key, station]),
+  );
+  const columnByStation = new Map(stationKeys.map((key, index) => [key, index]));
   const dateIndex = new Map(dates.map((date, index) => [date, index]));
   const services: TimetableService[] = [];
   const destinationCounts = new Map<string, number>();
 
   for (const { trip, stops } of usable) {
-    const destination = trip.headsign.trim() || stopNames.get(stops.at(-1)!.stopId) || "Destination unavailable";
+    const destination = trip.headsign.trim()
+      || canonicalByStop.get(stops.at(-1)!.stopId)?.name
+      || "Destination unavailable";
     destinationCounts.set(destination, (destinationCounts.get(destination) ?? 0) + 1);
     const service: TimetableService = {
       id: trip.id,
-      origin: stopNames.get(stops[0].stopId) ?? "Origin unavailable",
+      origin: canonicalByStop.get(stops[0].stopId)?.name ?? "Origin unavailable",
       destination,
       dateMask: trip.activeDates.reduce((mask, date) => mask | (1 << dateIndex.get(date)!), 0),
-      times: Array<number | null>(stationStopIds.length).fill(null),
+      times: Array<number | null>(stationKeys.length).fill(null),
     };
-    for (const stop of stops) {
-      const column = columnByStop.get(stop.stopId);
-      if (column !== undefined) service.times[column] = Math.round(stop.minutes * 10) / 10;
+    for (const [key, minutes] of selectCanonicalStopTimes(stops, canonicalByStop)) {
+      const column = columnByStation.get(key);
+      if (column !== undefined) service.times[column] = minutes;
     }
     services.push(service);
   }
@@ -279,8 +429,8 @@ function buildDirection(
   return {
     id: directionId,
     label,
-    stationIds: stationStopIds.map((stopId) => lineIdFromName(stopNames.get(stopId) ?? stopId)),
-    stationNames: stationStopIds.map((stopId) => stopNames.get(stopId) ?? stopId),
+    stationIds: stationKeys.map((key) => stationByKey.get(key)?.id ?? lineIdFromName(key)),
+    stationNames: stationKeys.map((key) => stationByKey.get(key)?.name ?? key),
     services,
   };
 }
@@ -293,6 +443,9 @@ export function validateTimetable(data: NetworkTimetableData): void {
     if (!line.id || line.directions.length === 0) throw new Error(`Line ${line.name || "(unknown)"} has no directions`);
     for (const direction of line.directions) {
       if (direction.stationIds.length !== direction.stationNames.length) throw new Error(`${line.name} station metadata mismatch`);
+      if (new Set(direction.stationIds).size !== direction.stationIds.length) {
+        throw new Error(`${line.name} direction ${direction.id} has duplicate canonical station ids`);
+      }
       if (!Array.isArray(direction.services)) throw new Error(`${line.name} has invalid services`);
       for (const service of direction.services) {
         if (!Number.isInteger(service.dateMask) || service.dateMask <= 0 || service.dateMask > 255) {
@@ -307,10 +460,35 @@ export function validateTimetable(data: NetworkTimetableData): void {
   }
 }
 
+export function auditTimetableStationDuplicates(data: NetworkTimetableData): {
+  affectedTables: number;
+  duplicateGroups: number;
+  details: string[];
+} {
+  const details: string[] = [];
+  let duplicateGroups = 0;
+  for (const line of data.lines) {
+    for (const direction of line.directions) {
+      const indexesByIdentity = new Map<string, number[]>();
+      direction.stationNames.forEach((name, index) => {
+        const identity = normalizedStationIdentity(name);
+        const indexes = indexesByIdentity.get(identity) ?? [];
+        indexes.push(index);
+        indexesByIdentity.set(identity, indexes);
+      });
+      const duplicates = [...indexesByIdentity.entries()].filter(([, indexes]) => indexes.length > 1);
+      if (duplicates.length === 0) continue;
+      duplicateGroups += duplicates.length;
+      details.push(`${line.name}/${direction.id}: ${duplicates.map(([name, indexes]) => `${name}=${indexes.length}`).join(", ")}`);
+    }
+  }
+  return { affectedTables: details.length, duplicateGroups, details };
+}
+
 export async function generateTimetable(options: GenerateTimetableOptions): Promise<NetworkTimetableData> {
   const generatedAt = options.generatedAt ?? new Date();
   const warnings: string[] = [];
-  const { routesById, stopNames, trips, stopTimes } = await loadGtfs(options.gtfsDir, options.dates);
+  const { routesById, canonicalByStop, trips, stopTimes } = await loadGtfs(options.gtfsDir, options.dates);
   let ptvRouteMetadata: "verified" | "not-verified" = "not-verified";
   let ptvVerifiedAtUtc: string | null = null;
 
@@ -340,7 +518,13 @@ export async function generateTimetable(options: GenerateTimetableOptions): Prom
     const routeTrips = [...trips.values()].filter((trip) => trip.routeId === route.id);
     const directionIds = [...new Set(routeTrips.map((trip) => trip.directionId))].sort();
     const directions = directionIds
-      .map((directionId) => buildDirection(directionId, routeTrips.filter((trip) => trip.directionId === directionId), stopTimes, stopNames, options.dates))
+      .map((directionId) => buildDirection(
+        directionId,
+        routeTrips.filter((trip) => trip.directionId === directionId),
+        stopTimes,
+        canonicalByStop,
+        options.dates,
+      ))
       .filter((direction): direction is TimetableDirection => direction !== null);
     if (directions.length === 0) {
       warnings.push(`No active GTFS services for ${lineName} in requested date range`);

@@ -13,6 +13,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { PtvCredentials } from "./lib/ptvClient.ts";
 import {
+  auditTimetableStationDuplicates,
   generateTimetable,
   melbourneDateRange,
   writeTimetableAtomically,
@@ -55,7 +56,9 @@ async function main() {
     ),
     0,
   );
+  const duplicateAudit = auditTimetableStationDuplicates(data);
   console.log(`Wrote ${data.lines.length} lines, ${serviceCount} unique services and ${datedServiceCount} dated operations to ${outputPath}`);
+  console.log(`Station canonicalization audit: ${duplicateAudit.duplicateGroups} duplicate name groups across ${duplicateAudit.affectedTables} direction tables`);
   console.log(`PTV route metadata: ${data.source.ptvRouteMetadata}; warnings: ${data.source.warnings.length}`);
 }
 
