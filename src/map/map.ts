@@ -2,48 +2,60 @@ import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 import type { NetworkStaticData } from "../shared/types";
 
+export type MapTheme = "light" | "dark";
+
+/** Builds a keyless CARTO raster basemap style for the given palette ("light_all" = Positron, "dark_all" = Dark Matter). */
+function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification {
+  const sourceId = `carto-${variant}`;
+  return {
+    version: 8,
+    glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+    sources: {
+      [sourceId]: {
+        type: "raster",
+        // CARTO round-robins requests across these 4 keyless subdomains.
+        tiles: [
+          `https://a.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
+          `https://b.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
+          `https://c.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
+          `https://d.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
+        ],
+        tileSize: 256,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      },
+    },
+    layers: [
+      {
+        id: `carto-${variant}-tiles`,
+        type: "raster",
+        source: sourceId,
+        minzoom: 0,
+        maxzoom: 20,
+      },
+    ],
+  };
+}
+
 /**
- * Keyless raster basemap using CARTO's free "Positron" tiles, plus a free
- * public glyphs CDN (openmaptiles.org) so that MapLibre symbol/text layers
- * (station name labels) can render without needing any API key or account —
- * matches the "static site, no accounts required" constraint.
+ * Keyless raster basemaps using CARTO's free "Positron" (light) and "Dark
+ * Matter" (dark) tiles, plus a free public glyphs CDN (openmaptiles.org) so
+ * that MapLibre symbol/text layers (station name labels) can render without
+ * needing any API key or account — matches the "static site, no accounts
+ * required" constraint.
  *
- * We deliberately use Positron (a light-grey, minimal "good for point data"
- * style, built on the same OpenStreetMap data as the previous standard-OSM
- * tiles) rather than a busier full-colour basemap: with 16 coloured train
- * lines and 90+ animated markers on screen at once, a visually loud basemap
- * (saturated land-use colours, dense POI icons, thick roads) competes with
- * and drowns out the data we actually want to be the visual focus. Positron's
- * muted roads/labels and near-white background let the line colours and
- * train markers read clearly at a glance.
+ * We deliberately use these muted, minimal "good for point data" styles
+ * (built on the same OpenStreetMap data as a standard OSM basemap) rather
+ * than a busier full-colour basemap: with 16 coloured train lines and 90+
+ * animated markers on screen at once, a visually loud basemap (saturated
+ * land-use colours, dense POI icons, thick roads) competes with and drowns
+ * out the data we actually want to be the visual focus. Their muted
+ * roads/labels and near-white/near-black backgrounds let the line colours
+ * and train markers read clearly at a glance in both light and dark mode.
  */
-const BASEMAP_STYLE: StyleSpecification = {
-  version: 8,
-  glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-  sources: {
-    "carto-positron": {
-      type: "raster",
-      // CARTO round-robins requests across these 4 keyless subdomains.
-      tiles: [
-        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-        "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto-positron-tiles",
-      type: "raster",
-      source: "carto-positron",
-      minzoom: 0,
-      maxzoom: 20,
-    },
-  ],
+const BASEMAP_STYLES: Record<MapTheme, StyleSpecification> = {
+  light: buildCartoStyle("light_all"),
+  dark: buildCartoStyle("dark_all"),
 };
 
 const LINES_SOURCE_ID = "network-lines";
@@ -72,10 +84,10 @@ function computeBounds(staticData: NetworkStaticData): maplibregl.LngLatBoundsLi
   ];
 }
 
-export function createMap(container: HTMLElement, staticData: NetworkStaticData): maplibregl.Map {
+export function createMap(container: HTMLElement, staticData: NetworkStaticData, theme: MapTheme = "light"): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
-    style: BASEMAP_STYLE,
+    style: BASEMAP_STYLES[theme],
     bounds: computeBounds(staticData),
     fitBoundsOptions: { padding: 32 },
     attributionControl: { compact: true },
@@ -98,9 +110,17 @@ export function createMap(container: HTMLElement, staticData: NetworkStaticData)
   return map;
 }
 
+/** Station dot/label colours per basemap theme — chosen for contrast against each basemap's background. */
+const STATION_PAINT_BY_THEME: Record<MapTheme, { circleFill: string; circleStroke: string; lineCasing: string; textColor: string; textHalo: string }> = {
+  light: { circleFill: "#ffffff", circleStroke: "#333333", lineCasing: "#ffffff", textColor: "#1a1a1a", textHalo: "#ffffff" },
+  dark: { circleFill: "#1c2333", circleStroke: "#e5e9f5", lineCasing: "#0b0f1a", textColor: "#e8ecf7", textHalo: "#0b0f1a" },
+};
+
 /**
  * Draws every in-scope line's route + a single deduplicated set of station
- * markers, once the map style has loaded. Idempotent per map instance.
+ * markers, once the map style has loaded. Idempotent per map instance (and
+ * safe to call again after a basemap style swap, since `setStyle` clears any
+ * custom sources/layers along with the previous basemap's own ones).
  *
  * v1 simplification: shared corridors (e.g. the City Loop approaches, or the
  * Metro Tunnel trunk shared by Sunbury/Cranbourne/Pakenham) are rendered as
@@ -108,7 +128,9 @@ export function createMap(container: HTMLElement, staticData: NetworkStaticData)
  * "merged" line — acceptable for a fun infographic-style map, not aiming for
  * pixel-perfect PTV map styling.
  */
-export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
+export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData, theme: MapTheme = "light"): void {
+  const palette = STATION_PAINT_BY_THEME[theme];
+
   const draw = () => {
     if (map.getSource(LINES_SOURCE_ID)) return; // already drawn (e.g. re-entrant "load" handling)
 
@@ -128,7 +150,7 @@ export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStati
       type: "line",
       source: LINES_SOURCE_ID,
       layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": "#ffffff", "line-width": 6, "line-opacity": 0.85 },
+      paint: { "line-color": palette.lineCasing, "line-width": 6, "line-opacity": 0.85 },
     });
     map.addLayer({
       id: LINE_LAYER_ID,
@@ -156,8 +178,8 @@ export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStati
       paint: {
         // Interchange stations (served by 2+ lines) get a slightly bigger dot so they read as "hubs".
         "circle-radius": ["case", [">", ["get", "lineCount"], 1], 5.5, 4],
-        "circle-color": "#ffffff",
-        "circle-stroke-color": "#333333",
+        "circle-color": palette.circleFill,
+        "circle-stroke-color": palette.circleStroke,
         "circle-stroke-width": 1.5,
       },
     });
@@ -175,8 +197,8 @@ export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStati
         "text-optional": true,
       },
       paint: {
-        "text-color": "#1a1a1a",
-        "text-halo-color": "#ffffff",
+        "text-color": palette.textColor,
+        "text-halo-color": palette.textHalo,
         "text-halo-width": 1.4,
       },
     });
@@ -187,6 +209,26 @@ export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStati
   } else {
     map.on("load", draw);
   }
+}
+
+/**
+ * Swaps the basemap tile style (light Positron <-> dark Dark Matter) and
+ * redraws the line/station layers on top of it in the matching palette.
+ * `setStyle` throws away every custom source/layer along with the previous
+ * basemap, so this always fully redraws rather than trying to patch
+ * individual paint properties — simpler and equally cheap for this data size.
+ */
+export function setMapTheme(
+  map: maplibregl.Map,
+  theme: MapTheme,
+  staticData: NetworkStaticData,
+  visibleLineIds: ReadonlySet<string>,
+): void {
+  map.setStyle(BASEMAP_STYLES[theme]);
+  map.once("style.load", () => {
+    addLineAndStations(map, staticData, theme);
+    setVisibleLines(map, visibleLineIds);
+  });
 }
 
 /** Shows/hides line layers based on the given set of visible line ids (see the legend panel). */

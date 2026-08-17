@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 225 66% 24%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 220 20% 95%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 220 20% 95%;
+  --muted-foreground: 220 9% 42%;
+  --accent: 220 25% 93%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 220 15% 88%;
+  --input: 220 15% 88%;
+  --ring: 225 66% 24%;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 222 47% 7%;
+  --foreground: 210 30% 96%;
+  --card: 222 40% 10%;
+  --card-foreground: 210 30% 96%;
+  --popover: 222 40% 10%;
+  --popover-foreground: 210 30% 96%;
+  --primary: 217 91% 70%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 222 30% 15%;
+  --secondary-foreground: 210 30% 96%;
+  --muted: 222 30% 15%;
+  --muted-foreground: 220 15% 65%;
+  --accent: 222 30% 17%;
+  --accent-foreground: 210 30% 96%;
+  --destructive: 0 63% 58%;
+  --destructive-foreground: 210 30% 96%;
+  --border: 222 25% 20%;
+  --input: 222 25% 20%;
+  --ring: 217 91% 70%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    @apply h-full w-full m-0 p-0;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family:
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+  }
+}
+
+/*
+ * MapLibre renders its own marker/popup DOM outside of React's control, so
+ * these can't be expressed as Tailwind utility classes on JSX elements — they
+ * target MapLibre's own class names / our imperatively-created marker elements.
+ */
+.info-popup .maplibregl-popup-content {
+  padding: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  font-family: inherit;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+}
+
+.info-popup .maplibregl-popup-tip {
+  border-top-color: hsl(var(--popover));
+  border-bottom-color: hsl(var(--popover));
+}
+
+.info-popup .maplibregl-popup-close-button {
+  font-size: 16px;
+  color: hsl(var(--muted-foreground));
+  padding: 4px 8px;
+  right: 2px;
+  top: 2px;
+}
+
+.info-popup .maplibregl-popup-close-button:hover {
+  color: hsl(var(--foreground));
+  background: none;
+}
+
+.maplibregl-ctrl-top-right {
+  top: env(safe-area-inset-top, 0);
+}
+
+.train-marker {
+  /* MapLibre's own .maplibregl-marker rule (applied to this same element) sets
+   * position: absolute; left: 0; top: 0 and relies on that for its
+   * `transform: translate(Xpx, Ypx)` positioning to be relative to the map
+   * container's origin. We must match position: absolute here too — see the
+   * original vanilla-JS implementation's note (git history) for the full
+   * explanation of what breaks otherwise. */
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  cursor: default;
+}
+
+.train-marker-dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.train-marker--delayed .train-marker-dot {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 2px #f4a300;
+  animation: train-delayed-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes train-delayed-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 0 0 2px #f4a300;
+  }
+  50% {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 0 0 4px rgba(244, 163, 0, 0.55);
+  }
+}
+
+.train-marker-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.15s ease-out;
+}
+
+/* Thin, theme-aware scrollbars for the panel/legend/card scroll areas (WebKit + Firefox). */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+  border-radius: 999px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+::view-transition-old(root), ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
