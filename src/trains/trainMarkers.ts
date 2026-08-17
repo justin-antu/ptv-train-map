@@ -53,14 +53,23 @@ export class TrainMarkerLayer {
           this.onTrainClick?.(created.position);
         });
       }
+      // Skip DOM/MapLibre writes entirely when nothing actually changed since
+      // the last update — a train "waiting at platform" or "just arrived"
+      // reports the exact same lon/lat/delay every tick, so without this
+      // check we'd still force a MapLibre marker reprojection + style write
+      // on every element every ~100ms even while visually motionless.
+      const prev = tracked.position;
+      const unchanged = prev.lon === pos.lon && prev.lat === pos.lat && prev.delayMin === pos.delayMin;
       tracked.position = pos;
-      const el = tracked.marker.getElement();
-      const delayed = pos.delayMin >= DELAYED_THRESHOLD_MIN;
-      el.title = delayed ? `To ${pos.destinationName} (+${pos.delayMin} min late)` : `To ${pos.destinationName}`;
-      el.classList.toggle("train-marker--delayed", delayed);
-      const dot = el.querySelector<HTMLElement>(".train-marker-dot");
-      if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
-      tracked.marker.setLngLat([pos.lon, pos.lat]);
+      if (!unchanged) {
+        const el = tracked.marker.getElement();
+        const delayed = pos.delayMin >= DELAYED_THRESHOLD_MIN;
+        el.title = delayed ? `To ${pos.destinationName} (+${pos.delayMin} min late)` : `To ${pos.destinationName}`;
+        el.classList.toggle("train-marker--delayed", delayed);
+        const dot = el.querySelector<HTMLElement>(".train-marker-dot");
+        if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
+        tracked.marker.setLngLat([pos.lon, pos.lat]);
+      }
     }
 
     for (const [key, tracked] of this.markers) {

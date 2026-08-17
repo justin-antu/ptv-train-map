@@ -3,7 +3,6 @@ import { AlertTriangle, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
-import { BorderBeam } from "../ui/border-beam";
 import { ScrollArea } from "../ui/scroll-area";
 import type { LineDisruption } from "../../shared/types";
 import type { VisibleLinesController } from "../../hooks/useVisibleLines";
@@ -40,10 +39,10 @@ interface LegendCardProps {
 }
 
 /**
- * Collapsible show/hide-per-line legend, restyled as a bento-style card with
- * an animated border accent. Both the per-line visibility selection
- * (`useVisibleLines`) and this card's own collapsed/expanded state persist
- * across visits, matching the original vanilla implementation's behaviour.
+ * Collapsible show/hide-per-line legend, restyled as a bento-style card.
+ * Both the per-line visibility selection (`useVisibleLines`) and this
+ * card's own collapsed/expanded state persist across visits, matching the
+ * original vanilla implementation's behaviour.
  */
 export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCardProps) {
   const [open, setOpen] = useState(() => !loadCollapsed());
@@ -56,9 +55,8 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
         setOpen(next);
         saveCollapsed(!next);
       }}
-      className="relative overflow-hidden rounded-xl border border-border bg-card/80 shadow-sm backdrop-blur-sm"
+      className="relative overflow-hidden rounded-xl border border-t-2 border-border border-t-primary bg-card/80 shadow-sm backdrop-blur-sm"
     >
-      <BorderBeam size={90} duration={9} colorFrom="var(--color-primary)" colorTo="#38bdf8" />
       <CollapsibleTrigger asChild>
         <button
           type="button"

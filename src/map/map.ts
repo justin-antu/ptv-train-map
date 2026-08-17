@@ -2,11 +2,25 @@ import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 import type { NetworkStaticData } from "../shared/types";
 
-export type MapTheme = "light" | "dark";
-
-/** Builds a keyless CARTO raster basemap style for the given palette ("light_all" = Positron, "dark_all" = Dark Matter). */
-function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification {
-  const sourceId = `carto-${variant}`;
+/**
+ * Keyless CARTO "Positron" raster basemap. The map is permanently on this
+ * light basemap regardless of the app's light/dark UI theme — dark mode only
+ * affects the surrounding chrome/panels (see `useTheme`/Tailwind `dark:`
+ * variants), not MapLibre itself.
+ *
+ * A previous version of this app swapped the basemap to CARTO "Dark Matter"
+ * via `map.setStyle()` when the UI theme changed. That turned out to be a
+ * significant source of bugs and complexity: `setStyle()` tears down every
+ * custom source/layer (requiring careful, error-prone re-add-on-reload
+ * logic), and, along with the free public glyphs CDN referenced below,
+ * contributed to real slowness/instability reports. A single, permanently
+ * light basemap is simpler, faster (no reload work, no risk of the
+ * track/station layers ever going missing after a style swap), and one
+ * fewer runtime dependency to keep correct — worth the minor loss of a
+ * theme-matched map in dark mode.
+ */
+function buildPositronStyle(): StyleSpecification {
+  const sourceId = "carto-light_all";
   return {
     version: 8,
     glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
@@ -15,10 +29,10 @@ function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification 
         type: "raster",
         // CARTO round-robins requests across these 4 keyless subdomains.
         tiles: [
-          `https://a.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
-          `https://b.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
-          `https://c.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
-          `https://d.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png`,
+          `https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
+          `https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
+          `https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
+          `https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
         ],
         tileSize: 256,
         attribution:
@@ -27,7 +41,7 @@ function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification 
     },
     layers: [
       {
-        id: `carto-${variant}-tiles`,
+        id: "carto-light_all-tiles",
         type: "raster",
         source: sourceId,
         minzoom: 0,
@@ -37,26 +51,7 @@ function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification 
   };
 }
 
-/**
- * Keyless raster basemaps using CARTO's free "Positron" (light) and "Dark
- * Matter" (dark) tiles, plus a free public glyphs CDN (openmaptiles.org) so
- * that MapLibre symbol/text layers (station name labels) can render without
- * needing any API key or account — matches the "static site, no accounts
- * required" constraint.
- *
- * We deliberately use these muted, minimal "good for point data" styles
- * (built on the same OpenStreetMap data as a standard OSM basemap) rather
- * than a busier full-colour basemap: with 16 coloured train lines and 90+
- * animated markers on screen at once, a visually loud basemap (saturated
- * land-use colours, dense POI icons, thick roads) competes with and drowns
- * out the data we actually want to be the visual focus. Their muted
- * roads/labels and near-white/near-black backgrounds let the line colours
- * and train markers read clearly at a glance in both light and dark mode.
- */
-const BASEMAP_STYLES: Record<MapTheme, StyleSpecification> = {
-  light: buildCartoStyle("light_all"),
-  dark: buildCartoStyle("dark_all"),
-};
+const POSITRON_STYLE = buildPositronStyle();
 
 const LINES_SOURCE_ID = "network-lines";
 const STATIONS_SOURCE_ID = "network-stations";
@@ -64,6 +59,9 @@ const LINE_CASING_LAYER_ID = "network-line-casing";
 const LINE_LAYER_ID = "network-line";
 const STATIONS_CIRCLE_LAYER_ID = "network-stations-circle";
 const STATIONS_LABEL_LAYER_ID = "network-stations-label";
+
+/** Station dot/label/line-casing colours, chosen for contrast against the (permanently light) Positron basemap. */
+const STATION_PAINT = { circleFill: "#ffffff", circleStroke: "#333333", lineCasing: "#ffffff", textColor: "#1a1a1a", textHalo: "#ffffff" };
 
 function computeBounds(staticData: NetworkStaticData): maplibregl.LngLatBoundsLike {
   let minLon = Infinity;
@@ -84,10 +82,11 @@ function computeBounds(staticData: NetworkStaticData): maplibregl.LngLatBoundsLi
   ];
 }
 
-export function createMap(container: HTMLElement, staticData: NetworkStaticData, theme: MapTheme = "light"): maplibregl.Map {
+/** Creates the map, permanently on the Positron basemap. Called exactly once per `MapView` mount. */
+export function createMap(container: HTMLElement, staticData: NetworkStaticData): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
-    style: BASEMAP_STYLES[theme],
+    style: POSITRON_STYLE,
     bounds: computeBounds(staticData),
     fitBoundsOptions: { padding: 32 },
     attributionControl: { compact: true },
@@ -110,17 +109,10 @@ export function createMap(container: HTMLElement, staticData: NetworkStaticData,
   return map;
 }
 
-/** Station dot/label colours per basemap theme — chosen for contrast against each basemap's background. */
-const STATION_PAINT_BY_THEME: Record<MapTheme, { circleFill: string; circleStroke: string; lineCasing: string; textColor: string; textHalo: string }> = {
-  light: { circleFill: "#ffffff", circleStroke: "#333333", lineCasing: "#ffffff", textColor: "#1a1a1a", textHalo: "#ffffff" },
-  dark: { circleFill: "#1c2333", circleStroke: "#e5e9f5", lineCasing: "#0b0f1a", textColor: "#e8ecf7", textHalo: "#0b0f1a" },
-};
-
 /**
  * Draws every in-scope line's route + a single deduplicated set of station
- * markers, once the map style has loaded. Idempotent per map instance (and
- * safe to call again after a basemap style swap, since `setStyle` clears any
- * custom sources/layers along with the previous basemap's own ones).
+ * markers, once the map's (one and only) style has loaded. Idempotent per
+ * map instance — safe to call more than once, a no-op after the first time.
  *
  * v1 simplification: shared corridors (e.g. the City Loop approaches, or the
  * Metro Tunnel trunk shared by Sunbury/Cranbourne/Pakenham) are rendered as
@@ -128,141 +120,87 @@ const STATION_PAINT_BY_THEME: Record<MapTheme, { circleFill: string; circleStrok
  * "merged" line — acceptable for a fun infographic-style map, not aiming for
  * pixel-perfect PTV map styling.
  */
-export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData, theme: MapTheme = "light"): void {
+export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
   if (map.isStyleLoaded()) {
-    drawLinesAndStations(map, staticData, theme);
+    drawLinesAndStations(map, staticData);
   } else {
-    // Only reachable right after map creation (the very first style hasn't
-    // finished loading yet) — the map's native "load" event fires exactly
-    // once per map instance, the first time its style+sources are ready, so
-    // this branch must never be relied on again after that (see
-    // `setMapTheme`, which calls `drawLinesAndStations` directly instead,
-    // since "load" won't fire a second time after a later `setStyle()`).
-    map.on("load", () => drawLinesAndStations(map, staticData, theme));
+    // Only reachable right after map creation, before the map's one and
+    // only style has finished loading — "load" fires exactly once per map
+    // instance, which is fine since we now only ever draw once, at mount.
+    map.on("load", () => drawLinesAndStations(map, staticData));
   }
 }
 
-/**
- * Actually adds the line/station sources+layers — safe to call as soon as
- * the *current* style is known to have loaded (either the map's one-time
- * "load" event, above, or a `setStyle()` call's "style.load" event, in
- * `setMapTheme` below). Deliberately does NOT itself check
- * `map.isStyleLoaded()`: right when "style.load" has just fired, the style
- * *document* is loaded but `isStyleLoaded()` can still briefly report false
- * (e.g. while the freshly-added raster source's own tiles are still in
- * flight) — checking it here would wrongly bounce into the "wait for load"
- * path above, which (per that comment) never actually re-fires after the
- * first time and would permanently strand the line/station layers.
- */
-function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData, theme: MapTheme): void {
-  const palette = STATION_PAINT_BY_THEME[theme];
+function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
+  if (map.getSource(LINES_SOURCE_ID)) return; // already drawn (e.g. re-entrant handling)
 
-  {
-    if (map.getSource(LINES_SOURCE_ID)) return; // already drawn (e.g. re-entrant handling)
+  map.addSource(LINES_SOURCE_ID, {
+    type: "geojson",
+    data: {
+      type: "FeatureCollection",
+      features: staticData.lines.map((line) => ({
+        type: "Feature",
+        properties: { lineId: line.id, name: line.name, color: line.color },
+        geometry: { type: "LineString", coordinates: line.polyline },
+      })),
+    },
+  });
+  map.addLayer({
+    id: LINE_CASING_LAYER_ID,
+    type: "line",
+    source: LINES_SOURCE_ID,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": STATION_PAINT.lineCasing, "line-width": 6, "line-opacity": 0.85 },
+  });
+  map.addLayer({
+    id: LINE_LAYER_ID,
+    type: "line",
+    source: LINES_SOURCE_ID,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": ["get", "color"], "line-width": 3.5 },
+  });
 
-    map.addSource(LINES_SOURCE_ID, {
-      type: "geojson",
-      data: {
-        type: "FeatureCollection",
-        features: staticData.lines.map((line) => ({
-          type: "Feature",
-          properties: { lineId: line.id, name: line.name, color: line.color },
-          geometry: { type: "LineString", coordinates: line.polyline },
-        })),
-      },
-    });
-    map.addLayer({
-      id: LINE_CASING_LAYER_ID,
-      type: "line",
-      source: LINES_SOURCE_ID,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": palette.lineCasing, "line-width": 6, "line-opacity": 0.85 },
-    });
-    map.addLayer({
-      id: LINE_LAYER_ID,
-      type: "line",
-      source: LINES_SOURCE_ID,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": ["get", "color"], "line-width": 3.5 },
-    });
-
-    map.addSource(STATIONS_SOURCE_ID, {
-      type: "geojson",
-      data: {
-        type: "FeatureCollection",
-        features: staticData.stations.map((station) => ({
-          type: "Feature",
-          properties: { name: station.name, id: station.id, lineCount: station.lineIds.length },
-          geometry: { type: "Point", coordinates: [station.lon, station.lat] },
-        })),
-      },
-    });
-    map.addLayer({
-      id: STATIONS_CIRCLE_LAYER_ID,
-      type: "circle",
-      source: STATIONS_SOURCE_ID,
-      paint: {
-        // Interchange stations (served by 2+ lines) get a slightly bigger dot so they read as "hubs".
-        "circle-radius": ["case", [">", ["get", "lineCount"], 1], 5.5, 4],
-        "circle-color": palette.circleFill,
-        "circle-stroke-color": palette.circleStroke,
-        "circle-stroke-width": 1.5,
-      },
-    });
-    map.addLayer({
-      id: STATIONS_LABEL_LAYER_ID,
-      type: "symbol",
-      source: STATIONS_SOURCE_ID,
-      minzoom: 10,
-      layout: {
-        "text-field": ["get", "name"],
-        "text-size": 11,
-        "text-offset": [0, 1.1],
-        "text-anchor": "top",
-        "text-font": ["Noto Sans Regular"],
-        "text-optional": true,
-      },
-      paint: {
-        "text-color": palette.textColor,
-        "text-halo-color": palette.textHalo,
-        "text-halo-width": 1.4,
-      },
-    });
-  }
-}
-
-/**
- * Swaps the basemap tile style (light Positron <-> dark Dark Matter) and
- * redraws the line/station layers on top of it in the matching palette.
- * `setStyle` throws away every custom source/layer along with the previous
- * basemap, so this always fully redraws rather than trying to patch
- * individual paint properties — simpler and equally cheap for this data size.
- */
-export function setMapTheme(
-  map: maplibregl.Map,
-  theme: MapTheme,
-  staticData: NetworkStaticData,
-  visibleLineIds: ReadonlySet<string>,
-): void {
-  // `diff: false` forces a *full* style reload rather than MapLibre's default
-  // diff-based update. This matters because `'style.load'` — which we rely on
-  // below to know when it's safe to re-add our custom sources/layers — is
-  // ONLY fired on a full reload; the diff path (the default) only fires
-  // 'data'/'styledata' events, so with the default `diff: true` our
-  // `.once('style.load', ...)` callback below would simply never run and the
-  // line/station layers would silently stay gone after every basemap swap.
-  // This is a known MapLibre/Mapbox GL JS gotcha (`style.load` is a private,
-  // full-reload-only event) — see e.g. maplibre/maplibre-gl-js#2587 and
-  // mapbox/mapbox-gl-js#7579 for the same issue and this same fix.
-  map.setStyle(BASEMAP_STYLES[theme], { diff: false });
-  map.once("style.load", () => {
-    // Call the draw step directly rather than `addLineAndStations` — we're
-    // already inside "style.load", so re-checking `isStyleLoaded()` here
-    // would risk falling into the "wait for load" fallback, which (per
-    // `addLineAndStations`'s comment) can never fire again after the map's
-    // first ever load and would leave the layers stuck missing.
-    drawLinesAndStations(map, staticData, theme);
-    setVisibleLines(map, visibleLineIds);
+  map.addSource(STATIONS_SOURCE_ID, {
+    type: "geojson",
+    data: {
+      type: "FeatureCollection",
+      features: staticData.stations.map((station) => ({
+        type: "Feature",
+        properties: { name: station.name, id: station.id, lineCount: station.lineIds.length },
+        geometry: { type: "Point", coordinates: [station.lon, station.lat] },
+      })),
+    },
+  });
+  map.addLayer({
+    id: STATIONS_CIRCLE_LAYER_ID,
+    type: "circle",
+    source: STATIONS_SOURCE_ID,
+    paint: {
+      // Interchange stations (served by 2+ lines) get a slightly bigger dot so they read as "hubs".
+      "circle-radius": ["case", [">", ["get", "lineCount"], 1], 5.5, 4],
+      "circle-color": STATION_PAINT.circleFill,
+      "circle-stroke-color": STATION_PAINT.circleStroke,
+      "circle-stroke-width": 1.5,
+    },
+  });
+  map.addLayer({
+    id: STATIONS_LABEL_LAYER_ID,
+    type: "symbol",
+    source: STATIONS_SOURCE_ID,
+    minzoom: 10,
+    layout: {
+      "text-field": ["get", "name"],
+      "text-size": 11,
+      "text-offset": [0, 1.1],
+      "text-anchor": "top",
+      "text-font": ["Noto Sans Regular"],
+      "text-optional": true,
+    },
+    paint: {
+      "text-color": STATION_PAINT.textColor,
+      "text-halo-color": STATION_PAINT.textHalo,
+      "text-halo-width": 1.4,
+    },
   });
 }
 

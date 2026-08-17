@@ -55,6 +55,60 @@ export interface InterpolationOptions {
   showBeforeFirstStopMs: number;
 }
 
+interface ParsedRunTimes {
+  firstMs: number;
+  lastMs: number;
+  stopMs: number[];
+}
+
+/**
+ * Caches each run's parsed (epoch-ms) stop times, keyed by the run object
+ * itself. `Date.parse()`-ing every stop's ISO timestamp on every call was a
+ * real, measurable cost: this is scanned once per animation-loop tick (see
+ * `MapView`) across every known run (hundreds, even though only a handful
+ * are ever "in progress" at once), so re-parsing from scratch every tick
+ * scaled with total schedule size, not with what's actually on screen. A
+ * `WeakMap` keyed on the run object needs no manual invalidation — a fresh
+ * `runs` array (from each ~30s live-data poll) contains new run objects, so
+ * old entries simply become unreachable and are garbage collected.
+ */
+const parsedTimesCache = new WeakMap<LiveRun, ParsedRunTimes>();
+
+function getParsedTimes(run: LiveRun): ParsedRunTimes {
+  let parsed = parsedTimesCache.get(run);
+  if (!parsed) {
+    const stopMs = run.stops.map((s) => Date.parse(s.timeUtc));
+    parsed = { firstMs: stopMs[0], lastMs: stopMs[stopMs.length - 1], stopMs };
+    parsedTimesCache.set(run, parsed);
+  }
+  return parsed;
+}
+
+/**
+ * Counts how many runs would currently render a marker (mid-route, or
+ * within the "waiting"/"just arrived" grace windows) — i.e. trains actually
+ * in service right now, as opposed to `runs.length`, which also includes
+ * every other upcoming scheduled service the live snapshot happens to have
+ * fetched ahead of time (up to ~12 departures per station, which can span
+ * hours for infrequent lines). Cheap enough to call on every live-data poll
+ * (no polyline geometry needed, just the cached parsed stop times).
+ */
+export function countActiveRuns(runs: LiveRun[], now: number, options: InterpolationOptions): number {
+  let count = 0;
+  for (const run of runs) {
+    if (run.stops.length === 0) continue;
+    const { firstMs, lastMs } = getParsedTimes(run);
+    if (now < firstMs) {
+      if (firstMs - now <= options.showBeforeFirstStopMs) count++;
+    } else if (now > lastMs) {
+      if (now - lastMs <= options.staleAfterMs) count++;
+    } else {
+      count++;
+    }
+  }
+  return count;
+}
+
 /**
  * Computes the current geographic position of every "in progress" train run
  * across every line, by finding which pair of consecutive predicted stop-times
@@ -83,8 +137,7 @@ export function computeTrainPositions(
     const lineContext = context.get(run.lineId);
     if (!lineContext) continue;
 
-    const firstTime = Date.parse(stops[0].timeUtc);
-    const lastTime = Date.parse(stops[stops.length - 1].timeUtc);
+    const { firstMs: firstTime, lastMs: lastTime, stopMs } = getParsedTimes(run);
 
     if (now < firstTime) {
       if (firstTime - now <= options.showBeforeFirstStopMs) {
@@ -130,8 +183,8 @@ export function computeTrainPositions(
     for (let i = 0; i < stops.length - 1; i++) {
       const a = stops[i];
       const b = stops[i + 1];
-      const tA = Date.parse(a.timeUtc);
-      const tB = Date.parse(b.timeUtc);
+      const tA = stopMs[i];
+      const tB = stopMs[i + 1];
       if (now >= tA && now <= tB) {
         const stationA = stationsById.get(a.stationId);
         const stationB = stationsById.get(b.stationId);

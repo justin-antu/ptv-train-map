@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "../ui/input";
-import { AnimatedList } from "../ui/animated-list";
 import type { StationStatic } from "../../shared/types";
 import { cn } from "../../lib/utils";
 
@@ -64,24 +63,21 @@ export function SearchCard({ stations, onSelect }: SearchCardProps) {
         />
       </div>
       {matches.length > 0 && (
-        <div className="mt-2 overflow-hidden rounded-lg border border-border">
-          {/* Keyed on the query so every new set of matches restarts the reveal cascade from scratch. */}
-          <AnimatedList key={query} delay={45} className="items-stretch! gap-0!">
-            {matches.map((station, i) => (
-              <button
-                key={station.id}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => select(station)}
-                className={cn(
-                  "w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                  i === highlighted && "bg-accent",
-                )}
-              >
-                {station.name}
-              </button>
-            ))}
-          </AnimatedList>
+        <div className="mt-2 flex flex-col overflow-hidden rounded-lg border border-border">
+          {matches.map((station, i) => (
+            <button
+              key={station.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => select(station)}
+              className={cn(
+                "w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                i === highlighted && "bg-accent",
+              )}
+            >
+              {station.name}
+            </button>
+          ))}
         </div>
       )}
     </div>

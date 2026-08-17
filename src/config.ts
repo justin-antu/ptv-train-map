@@ -26,3 +26,12 @@ export const RUN_STALE_AFTER_MS = 3 * 60_000;
 
 /** How long before a run's first known stop we start showing it "waiting at platform". */
 export const RUN_SHOW_BEFORE_FIRST_STOP_MS = 3 * 60_000;
+
+/**
+ * Minimum real time between train-position recomputes/marker updates.
+ * Trains move slowly relative to a city-scale map, so ~10 updates/sec is
+ * visually indistinguishable from doing it every animation frame (60/sec) —
+ * but with hundreds of known runs to scan and dozens of marker DOM elements
+ * to update each time, throttling this cuts real, measurable CPU cost.
+ */
+export const TRAIN_UPDATE_INTERVAL_MS = 100;

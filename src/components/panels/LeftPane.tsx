@@ -15,7 +15,6 @@ interface LeftPaneProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  now: number;
   selection: Selection;
   onClearSelection: () => void;
   onStationSearchSelect: (station: StationStatic) => void;
@@ -33,7 +32,6 @@ export function LeftPane({
   lineNameById,
   lineColorById,
   runs,
-  now,
   selection,
   onClearSelection,
   onStationSearchSelect,
@@ -61,7 +59,6 @@ export function LeftPane({
         lineNameById={lineNameById}
         lineColorById={lineColorById}
         runs={runs}
-        now={now}
         favourite={favourite}
         onClose={onClearSelection}
       />
@@ -71,7 +68,6 @@ export function LeftPane({
           favourite={favourite}
           station={favouriteStation}
           runs={runs}
-          now={now}
           lineNameById={lineNameById}
           lineColorById={lineColorById}
           notifications={notifications}

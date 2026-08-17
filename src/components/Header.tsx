@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AnimatedThemeToggler } from "./ui/animated-theme-toggler";
 import { NumberTicker } from "./ui/number-ticker";
 import type { Theme } from "../hooks/useTheme";
@@ -11,7 +12,7 @@ interface HeaderProps {
   trainCount: number;
 }
 
-export function Header({ theme, onThemeChange, isDemo, generatedAtUtc, trainCount }: HeaderProps) {
+export const Header = memo(function Header({ theme, onThemeChange, isDemo, generatedAtUtc, trainCount }: HeaderProps) {
   return (
     <header className="relative z-20 flex items-center justify-between gap-3 border-b border-border bg-card/60 px-4 py-2.5 backdrop-blur-sm sm:px-6">
       <div className="flex min-w-0 items-center gap-2.5">
@@ -26,7 +27,7 @@ export function Header({ theme, onThemeChange, isDemo, generatedAtUtc, trainCoun
 
       <div className="flex items-center gap-2 sm:gap-3">
         <div className="hidden items-center gap-2 rounded-full border border-border bg-background/60 px-3 py-1 sm:flex">
-          <span className={cn("size-1.5 rounded-full", isDemo ? "bg-amber-500" : "animate-pulse bg-emerald-500")} />
+          <span className={cn("size-1.5 rounded-full", isDemo ? "bg-amber-500" : "bg-emerald-500")} />
           <span className="text-[11px] text-muted-foreground">
             {isDemo
               ? "Sample preview"
@@ -50,4 +51,4 @@ export function Header({ theme, onThemeChange, isDemo, generatedAtUtc, trainCoun
       </div>
     </header>
   );
-}
+});

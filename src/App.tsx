@@ -5,14 +5,14 @@ import { MapView, type MapViewHandle } from "./components/MapView";
 import { LeftPane } from "./components/panels/LeftPane";
 import { RightPanePlaceholder } from "./components/panels/RightPanePlaceholder";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { BlurFade } from "./components/ui/blur-fade";
 import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
 import { useLiveData } from "./hooks/useLiveData";
 import { useVisibleLines } from "./hooks/useVisibleLines";
 import { useFavouriteStation } from "./hooks/useFavouriteStation";
 import { useNotifications } from "./hooks/useNotifications";
-import { useNow } from "./hooks/useNow";
+import { countActiveRuns } from "./trains/interpolate";
+import { RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
 import type { Selection } from "./shared/selection";
 import type { StationStatic } from "./shared/types";
 import { APP_TITLE, NETWORK_SUBTITLE } from "./config";
@@ -21,7 +21,6 @@ export default function App() {
   const [theme, setTheme] = useTheme();
   const { data: staticData, error: staticDataError } = useStaticData();
   const live = useLiveData(staticData);
-  const now = useNow(1000);
   const [selection, setSelection] = useState<Selection>(null);
   const mapRef = useRef<MapViewHandle>(null);
 
@@ -44,6 +43,20 @@ export default function App() {
   // snapshot — distinct from (and more meaningful here than) which lines the
   // user has toggled on in the legend, which is just a display preference.
   const linesWithActiveService = useMemo(() => new Set(live.runs.map((r) => r.lineId)).size, [live.runs]);
+  // Trains actually in service right now, not `live.runs.length` — the live
+  // snapshot fetches up to ~12 upcoming departures per station, most of
+  // which are scheduled well into the future, not currently running. Only
+  // recomputed when a fresh snapshot arrives (~every 30s), not per-frame.
+  const trainsRunningNow = useMemo(
+    () => countActiveRuns(live.runs, Date.now(), { staleAfterMs: RUN_STALE_AFTER_MS, showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS }),
+    [live.runs],
+  );
+
+  const stationCount = staticData?.stations.length ?? 0;
+  const rightPaneStats = useMemo(
+    () => ({ trainsRunning: trainsRunningNow, linesActive: linesWithActiveService, stationCount, disruptionCount }),
+    [trainsRunningNow, linesWithActiveService, stationCount, disruptionCount],
+  );
 
   const flyToAndSelect = useCallback((station: StationStatic) => {
     mapRef.current?.flyToStation(station);
@@ -82,8 +95,8 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <BlurFade duration={0.5} offset={10} className="flex min-h-dvh flex-col bg-background text-foreground lg:h-dvh lg:overflow-hidden">
-        <Header theme={theme} onThemeChange={setTheme} isDemo={live.isDemo} generatedAtUtc={live.generatedAtUtc} trainCount={live.runs.length} />
+      <div className="flex min-h-dvh flex-col bg-background text-foreground lg:h-dvh lg:overflow-hidden">
+        <Header theme={theme} onThemeChange={setTheme} isDemo={live.isDemo} generatedAtUtc={live.generatedAtUtc} trainCount={trainsRunningNow} />
 
         <div className="flex flex-1 flex-col lg:grid lg:grid-cols-[20%_60%_20%] lg:grid-rows-[1fr] lg:overflow-hidden">
           <aside className="thin-scrollbar order-2 border-t border-border bg-muted/20 p-3 lg:order-none lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-r">
@@ -93,7 +106,6 @@ export default function App() {
               lineNameById={lineNameById}
               lineColorById={lineColorById}
               runs={live.runs}
-              now={now}
               selection={selection}
               onClearSelection={handleBackgroundClick}
               onStationSearchSelect={flyToAndSelect}
@@ -116,7 +128,6 @@ export default function App() {
               lineColorById={lineColorById}
               runs={live.runs}
               visibleLineIds={visibleLines.visible}
-              theme={theme}
               onStationSelect={handleStationSelect}
               onTrainSelect={handleTrainSelect}
               onBackgroundClick={handleBackgroundClick}
@@ -124,19 +135,12 @@ export default function App() {
           </main>
 
           <aside className="hidden border-border lg:order-none lg:block lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-l">
-            <RightPanePlaceholder
-              stats={{
-                trainsRunning: live.runs.length,
-                linesActive: linesWithActiveService,
-                stationCount: staticData.stations.length,
-                disruptionCount,
-              }}
-            />
+            <RightPanePlaceholder stats={rightPaneStats} />
           </aside>
         </div>
 
         <Footer />
-      </BlurFade>
+      </div>
     </TooltipProvider>
   );
 }

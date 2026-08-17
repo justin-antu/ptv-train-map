@@ -48,27 +48,11 @@ export default {
         xl: "calc(var(--radius) + 4px)",
       },
       keyframes: {
-        marquee: {
-          from: { transform: "translateX(0)" },
-          to: { transform: "translateX(calc(-100% - var(--gap)))" },
-        },
-        "marquee-vertical": {
-          from: { transform: "translateY(0)" },
-          to: { transform: "translateY(calc(-100% - var(--gap)))" },
-        },
-        shine: {
-          "0%": { backgroundPosition: "0% 0%" },
-          "50%": { backgroundPosition: "100% 100%" },
-          "100%": { backgroundPosition: "0% 0%" },
-        },
-        pulse: {
-          "0%, 100%": { boxShadow: "0 0 0 0 var(--pulse-color, rgba(0,0,0,0.5))" },
-          "50%": { boxShadow: "0 0 0 var(--distance) var(--pulse-color, rgba(0,0,0,0.5))" },
-        },
-        "pulse-ripple": {
-          "0%": { boxShadow: "0 0 0 0 var(--pulse-color, var(--bg))" },
-          "100%": { boxShadow: "0 0 0 var(--distance) transparent" },
-        },
+        // Only one-shot, ~0.2s open/close transitions remain here — every
+        // *infinite* decorative keyframe (marquee, shine, pulse, pulse-ripple)
+        // that used to back the now-removed continuous MagicUI animations
+        // (Marquee, ShineBorder, PulsatingButton) was deliberately dropped as
+        // part of an app-wide continuous-animation cost audit.
         "collapsible-down": {
           from: { height: "0" },
           to: { height: "var(--radix-collapsible-content-height)" },
@@ -79,11 +63,6 @@ export default {
         },
       },
       animation: {
-        marquee: "marquee var(--duration) infinite linear",
-        "marquee-vertical": "marquee-vertical var(--duration) linear infinite",
-        shine: "shine var(--duration) infinite linear",
-        pulse: "pulse var(--duration) ease-out infinite",
-        "pulse-ripple": "pulse-ripple var(--duration) cubic-bezier(0.16,1,0.3,1) infinite",
         "collapsible-down": "collapsible-down 0.2s ease-out",
         "collapsible-up": "collapsible-up 0.2s ease-out",
       },

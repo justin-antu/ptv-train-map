@@ -1,5 +1,4 @@
 import { Star, X } from "lucide-react";
-import { BorderBeam } from "../ui/border-beam";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { EtaText } from "../EtaText";
@@ -8,6 +7,7 @@ import type { LiveRun, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
 import type { FavouriteStationController } from "../../hooks/useFavouriteStation";
 import { delayMinutesFor, soonestPerLine, upcomingStopsForStation } from "../../data/departures";
+import { useNow } from "../../hooks/useNow";
 import { cn } from "../../lib/utils";
 
 interface SelectedInfoCardProps {
@@ -16,7 +16,6 @@ interface SelectedInfoCardProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  now: number;
   favourite: FavouriteStationController;
   onClose: () => void;
 }
@@ -27,6 +26,10 @@ interface SelectedInfoCardProps {
  * of the redesign (see the layout spec), which also nicely sidesteps the
  * original single-shared-popup-instance bookkeeping since React just
  * re-renders this component from `selection` state.
+ *
+ * Owns its own 1s clock (rather than receiving `now` from a shared App-level
+ * ticker) so that this is the *only* thing that re-renders once a second —
+ * not the entire app tree.
  */
 export function SelectedInfoCard({
   selection,
@@ -34,10 +37,11 @@ export function SelectedInfoCard({
   lineNameById,
   lineColorById,
   runs,
-  now,
   favourite,
   onClose,
 }: SelectedInfoCardProps) {
+  const now = useNow(1000);
+
   if (!selection) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
@@ -53,8 +57,7 @@ export function SelectedInfoCard({
     const starred = favourite.isFavourite(station.id);
 
     return (
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm">
-        <BorderBeam size={70} duration={7} colorFrom="#22c55e" colorTo="#0ea5e9" />
+      <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-500 bg-card/80 p-4 shadow-sm backdrop-blur-sm">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1 truncate text-base font-bold">{station.name}</div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -112,8 +115,7 @@ export function SelectedInfoCard({
   const nextStationName = nextStop ? (stationsById.get(nextStop.stationId)?.name ?? nextStop.stationId) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm">
-      <BorderBeam size={70} duration={7} colorFrom={color} colorTo={color} />
+    <div className="relative overflow-hidden rounded-xl border border-l-4 border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm" style={{ borderLeftColor: color }}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-3 shrink-0 rounded-full ring-2 ring-white" style={{ background: color }} />

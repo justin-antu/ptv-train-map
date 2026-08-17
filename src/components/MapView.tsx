@@ -1,12 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
-import type { Theme } from "../hooks/useTheme";
-import { addLineAndStations, createMap, queryStationIdAt, setMapTheme, setVisibleLines, setupStationHoverCursor } from "../map/map";
+import { addLineAndStations, createMap, queryStationIdAt, setVisibleLines, setupStationHoverCursor } from "../map/map";
 import { startAnimationLoop } from "../trains/animate";
 import { buildInterpolationContext, computeTrainPositions, type TrainPosition } from "../trains/interpolate";
 import { TrainMarkerLayer } from "../trains/trainMarkers";
-import { RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "../config";
+import { RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS, TRAIN_UPDATE_INTERVAL_MS } from "../config";
 
 export interface MapViewHandle {
   flyToStation(station: StationStatic): void;
@@ -18,7 +17,6 @@ interface MapViewProps {
   lineColorById: Map<string, string>;
   runs: LiveRun[];
   visibleLineIds: Set<string>;
-  theme: Theme;
   onStationSelect: (stationId: string) => void;
   onTrainSelect: (pos: TrainPosition) => void;
   onBackgroundClick: () => void;
@@ -31,27 +29,21 @@ interface MapViewProps {
  * imperatively inside refs/effects — none of that goes through React state,
  * since re-rendering the whole component tree at animation-frame rate would
  * be wasteful (and pointless, since MapLibre already owns its own canvas).
+ *
+ * Wrapped in `memo` so that App-level re-renders unrelated to this
+ * component's own props (e.g. a countdown ticking somewhere else in the
+ * tree) never cause it to re-render, let alone reinitialize the map.
  */
-export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
-  { staticData, stationsById, lineColorById, runs, visibleLineIds, theme, onStationSelect, onTrainSelect, onBackgroundClick },
-  ref,
-) {
+export const MapView = memo(
+  forwardRef<MapViewHandle, MapViewProps>(function MapView(
+    { staticData, stationsById, lineColorById, runs, visibleLineIds, onStationSelect, onTrainSelect, onBackgroundClick },
+    ref,
+  ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerLayerRef = useRef<TrainMarkerLayer | null>(null);
   const runsRef = useRef<LiveRun[]>(runs);
   const visibleLineIdsRef = useRef<Set<string>>(visibleLineIds);
-  const themeRef = useRef<Theme>(theme);
-  // Tracks whichever theme the *current* map instance's basemap actually
-  // reflects, so the effect below can tell "theme prop changed since the map
-  // was created/last swapped" apart from "component re-rendered for some
-  // unrelated reason" — set once at map-creation time (not just on the very
-  // first render), so it's re-derived correctly if the mount effect ever
-  // re-runs (e.g. React StrictMode's dev-only double-invoke), unlike a
-  // one-shot "is this the first render" flag which can't tell those cases
-  // apart and previously caused a spurious extra basemap swap right after a
-  // StrictMode-triggered remount.
-  const appliedThemeRef = useRef<Theme | null>(null);
 
   useEffect(() => {
     runsRef.current = runs;
@@ -70,10 +62,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     const container = containerRef.current;
     if (!container) return;
 
-    const map = createMap(container, staticData, themeRef.current);
+    const map = createMap(container, staticData);
     mapRef.current = map;
-    appliedThemeRef.current = themeRef.current;
-    addLineAndStations(map, staticData, themeRef.current);
+    addLineAndStations(map, staticData);
     setupStationHoverCursor(map);
 
     const interpolationContext = buildInterpolationContext(staticData);
@@ -86,7 +77,18 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       else onBackgroundClick();
     });
 
+    // Trains move slowly relative to a city-scale map, so recomputing
+    // positions/moving markers faster than ~10x/sec is wasted work that's
+    // visually indistinguishable from smooth motion — but scanning every
+    // known run (which can be in the hundreds, most not currently "in
+    // progress") and writing to every visible marker's DOM element is real,
+    // measurable CPU cost at 60fps. `requestAnimationFrame` is still used
+    // for scheduling (so this loop is correctly paused by the browser when
+    // the tab is backgrounded), but the actual work is throttled.
+    let lastUpdateMs = 0;
     const stopAnimation = startAnimationLoop((now) => {
+      if (now - lastUpdateMs < TRAIN_UPDATE_INTERVAL_MS) return;
+      lastUpdateMs = now;
       const positions = computeTrainPositions(runsRef.current, stationsById, interpolationContext, now, {
         staleAfterMs: RUN_STALE_AFTER_MS,
         showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS,
@@ -105,16 +107,6 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staticData]);
 
-  // Basemap swap: only when `theme` has actually changed from whatever the
-  // current map instance was created/last swapped to (see appliedThemeRef
-  // above) — not on every render/effect re-run.
-  useEffect(() => {
-    themeRef.current = theme;
-    if (!mapRef.current || appliedThemeRef.current === theme) return;
-    appliedThemeRef.current = theme;
-    setMapTheme(mapRef.current, theme, staticData, visibleLineIdsRef.current);
-  }, [theme, staticData]);
-
   useImperativeHandle(
     ref,
     () => ({
@@ -128,4 +120,6 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   );
 
   return <div ref={containerRef} className="absolute inset-0" />;
-});
+  }),
+);
+MapView.displayName = "MapView";
