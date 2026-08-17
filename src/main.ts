@@ -6,6 +6,7 @@ import { addLineAndStations, createMap, queryStationIdAt, setupStationHoverCurso
 import { createLegend } from "./map/legend";
 import { createInfoCardController } from "./map/infoCard";
 import { createFavouriteBoard } from "./map/favourite";
+import { createStationAutocomplete } from "./map/stationAutocomplete";
 import { startAnimationLoop } from "./trains/animate";
 import { buildInterpolationContext, computeTrainPositions } from "./trains/interpolate";
 import { TrainMarkerLayer } from "./trains/trainMarkers";
@@ -28,6 +29,7 @@ app.innerHTML = `
       times at each station (the PTV Timetable API doesn't expose live GPS for
       trains) &mdash; so treat this as "roughly where the train should be", not exact GPS.
     </p>
+    <div class="station-autocomplete" id="station-search"></div>
     <div class="fav-board" id="fav-board"></div>
     <div class="legend" id="legend"></div>
   </div>
@@ -39,7 +41,8 @@ async function main() {
   const demoBadge = document.getElementById("demo-badge");
   const legendContainer = document.getElementById("legend");
   const favBoardContainer = document.getElementById("fav-board");
-  if (!mapContainer || !statusText || !demoBadge || !legendContainer || !favBoardContainer) return;
+  const searchContainer = document.getElementById("station-search");
+  if (!mapContainer || !statusText || !demoBadge || !legendContainer || !favBoardContainer || !searchContainer) return;
 
   const staticData = await loadStaticData();
   const map = createMap(mapContainer, staticData);
@@ -93,6 +96,18 @@ async function main() {
       setVisibleLines(map, visibleLineIds);
     },
   );
+
+  createStationAutocomplete(searchContainer, staticData.stations, {
+    placeholder: "Search for a station…",
+    onSelect: (station) => {
+      // A searched-for station might currently be hidden via the legend (or
+      // simply not have any of its lines checked) — make sure at least one of
+      // its lines is visible so flying to it doesn't land on an invisible dot.
+      legend.setVisible(station.lineIds);
+      map.flyTo({ center: [station.lon, station.lat], zoom: Math.max(map.getZoom(), 12), essential: true });
+      infoCard.showStation(station.id, currentRuns, Date.now());
+    },
+  });
 
   let currentRuns: LiveRun[] = [];
 
