@@ -28,11 +28,7 @@ function escapeHtml(value: string): string {
 
 /**
  * Renders a text input with a filtered dropdown of station name matches into
- * `container`. Reused for both the always-visible quick-jump search box and
- * the trip planner's "From"/"To" pickers, rather than building three separate
- * ad hoc inputs — behaviour (substring match, keyboard nav, click-to-select)
- * is identical between them; only styling context and what `onSelect` does
- * with the chosen station differs.
+ * `container`. Used for the always-visible quick-jump search box.
  */
 export function createStationAutocomplete(
   container: HTMLElement,

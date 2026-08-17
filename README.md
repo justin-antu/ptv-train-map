@@ -31,12 +31,6 @@ individual lines.
   opt-in toggle for browser notifications when your next train is ~2 minutes
   away. Notifications are never requested automatically — only when you
   explicitly turn the toggle on.
-- **Trip planner** — pick a "from" and "to" station to see the next few
-  direct departures; if the two stations don't share a line, it falls back to
-  a simple one-interchange heuristic (via Flinders Street where possible) or
-  tells you plainly that no route was found in the current data. This is a
-  deliberately simple v1 — see [Limitations](#limitations) for what it
-  doesn't do.
 - **Installable PWA** — add it to your phone's home screen for an app-like,
   full-screen experience (no offline support — it's inherently a live-data
   app).
@@ -150,15 +144,6 @@ network in future and this list needs re-verifying.
   the gap between a stop's originally-scheduled time and PTV's current
   predicted time for it — it's only as accurate/timely as PTV's own
   prediction, same caveat as train positions above.
-- **Trip planner is a simple v1, not full journey planning.** It only tries a
-  direct (same-line) trip, then a single interchange (preferring Flinders
-  Street, else whichever station covers the most lines) — never two or more
-  changes. It also only ever looks at each station's already-fetched window
-  of upcoming departures (see `MAX_RESULTS_PER_STOP` in
-  `scripts/fetch-live-data.ts`), so during very low-frequency periods (e.g.
-  the middle of the night, when some lines run no trains at all) it can
-  genuinely find no viable connection even where one exists at a busier time
-  — it reports "no route found" honestly in that case rather than guessing.
 - **Disruption alerts are per-line, not per-stop.** A line-level PTV service
   alert doesn't necessarily affect every station on that line equally, but
   it's surfaced as a single legend indicator for the whole line for
@@ -186,15 +171,13 @@ network in future and this list needs re-verifying.
 │   ├── config.ts               Non-secret app config (data URLs, poll intervals)
 │   ├── shared/types.ts         Shared TS types for the static/live JSON shapes
 │   ├── data/
-│   │   ├── departures.ts       Shared "upcoming departures at a station" + ETA-formatting helpers
-│   │   └── tripPlanner.ts      Direct + one-interchange trip-planning logic
+│   │   └── departures.ts       Shared "upcoming departures at a station" + ETA-formatting helpers
 │   ├── map/
 │   │   ├── map.ts              MapLibre setup: basemap, per-line route colours, deduplicated station markers
 │   │   ├── legend.ts           Collapsible show/hide-per-line legend panel + disruption indicators
 │   │   ├── infoCard.ts         Station/train click info cards (single-card-at-a-time)
 │   │   ├── favourite.ts        "My station" departure board + opt-in notifications
-│   │   ├── stationAutocomplete.ts  Reusable station search/autocomplete input (search box + trip planner)
-│   │   └── tripPlannerPanel.ts     Trip planner UI
+│   │   └── stationAutocomplete.ts  Reusable station search/autocomplete input
 │   ├── trains/                 Per-line position + delay interpolation (along each line's polyline), marker rendering, shared animation loop
 │   └── main.ts                 App entry point
 └── .github/workflows/

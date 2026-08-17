@@ -7,7 +7,7 @@ export interface LegendLine {
 }
 
 export interface LegendController {
-  /** Programmatically force a specific set of lines visible (e.g. from a search result or trip planner pick), syncing checkboxes + storage + onChange. */
+  /** Programmatically force a specific set of lines visible (e.g. from a search result pick), syncing checkboxes + storage + onChange. */
   setVisible(lineIds: Iterable<string>): void;
   /** Updates the per-line disruption indicator/detail text; call whenever a fresh live snapshot is polled. */
   setDisruptions(disruptionsByLine: Record<string, LineDisruption[]>): void;
