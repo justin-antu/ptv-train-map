@@ -1,6 +1,6 @@
-# Where Is My Train? 🚆 — Metro Trains Melbourne
+# Dude, where's my train? 🚆 — Metro Trains Melbourne
 
-A fun, real-time(ish) map of **every Metro Trains Melbourne metropolitan line**
+A fun, near real-time map of **every Metro Trains Melbourne metropolitan line**
 (V/Line regional trains are explicitly out of scope), built as a fully static
 site (Vite + TypeScript + [MapLibre GL JS](https://maplibre.org/)) that can be
 hosted for free on GitHub Pages — no backend server required.
@@ -97,7 +97,7 @@ network in future and this list needs re-verifying.
   multiple lines run the same physical track (the City Loop approaches, the
   Metro Tunnel trunk shared by Sunbury/Cranbourne/Pakenham, etc.), each line's
   colour is drawn as its own overlapping polyline rather than one
-  cartographically "merged" line — a deliberate v1 simplification for a fun
+  cartographically "merged" line — a deliberate simplification for a fun
   infographic-style map, not aiming for pixel-perfect PTV map styling.
 - **Station identity is by name.** Stations shared by multiple lines are
   deduplicated by (slugified) name into a single marker; the specific lat/lon
@@ -105,9 +105,9 @@ network in future and this list needs re-verifying.
   a platform's width in principle (not noticeable at map scale).
 - **No live data until the first successful cron run** (needs the two repo
   secrets configured — see below). Until then, and any time the live fetch
-  fails, the site clearly labels itself **"DEMO DATA"** and shows a couple of
-  synthetic trains per line looping up and down each line, so it never shows a
-  blank or broken page.
+  fails, the site falls back to a clearly-labelled **"Sample preview"** state
+  and shows a couple of synthetic trains per line looping up and down each
+  line, so it never shows a blank or broken page.
 - **Upgrading to real GPS later**: if a GTFS-Realtime Vehicle Positions feed
   key becomes available for Melbourne trains in future, `scripts/fetch-live-data.ts`
   and `src/trains/interpolate.ts` are the two places that would need to change
@@ -131,7 +131,7 @@ network in future and this list needs re-verifying.
 ├── src/
 │   ├── config.ts               Non-secret app config (data URLs, poll intervals)
 │   ├── shared/types.ts         Shared TS types for the static/live JSON shapes
-│   ├── data/                   Loading live/static data + client-side demo data generator (all lines)
+│   ├── data/                   Loading live/static data + client-side sample-data generator (all lines)
 │   ├── map/
 │   │   ├── map.ts              MapLibre setup: basemap, per-line route colours, deduplicated station markers
 │   │   └── legend.ts           Show/hide-per-line legend panel
@@ -150,8 +150,8 @@ npm run dev
 ```
 
 This starts Vite's dev server (prints a local URL, typically http://localhost:5173).
-Without live data configured, the map will show clearly-labeled **demo/sample
-trains** (a couple per line) — that's expected and by design.
+Without live data configured, the map will show a clearly-labelled **sample
+preview** with synthetic trains (a couple per line) — that's expected and by design.
 
 To test against the real PTV API locally:
 
@@ -185,7 +185,7 @@ repository secret):
 | `PTV_API_KEY`  | Your PTV Timetable API signing key (GUID-like)      |
 
 Until these are set, `refresh-data.yml` will run but skip the fetch with a
-warning, and the deployed site will keep showing demo data.
+warning, and the deployed site will keep showing the sample-preview fallback.
 
 ## GitHub Pages deployment
 
@@ -206,7 +206,7 @@ fork this repo under a different name, update that base path to match.
   (Department of Transport and Planning, CC BY 4.0) — each line's official PTV
   colour comes straight from its GTFS `route_color` field.
 - Live departure predictions: [PTV Timetable API v3](https://www.vic.gov.au/public-transport-timetable-api).
-- Basemap tiles: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+- Basemap tiles: [CARTO](https://carto.com/attributions) Positron, © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 - In-scope line list: verified against the live PTV Timetable API and the
   Victorian GTFS feed on 2026-08-17 — see `scripts/lib/lines.ts` for the full
   verification method and how to re-check it if PTV restructures the network.

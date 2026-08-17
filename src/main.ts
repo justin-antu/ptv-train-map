@@ -19,7 +19,7 @@ app.innerHTML = `
     <h1>${APP_TITLE}</h1>
     <p class="subtitle">${NETWORK_SUBTITLE} &middot; all metro lines (no V/Line)</p>
     <div class="status-row">
-      <span class="demo-badge" id="demo-badge">DEMO DATA</span>
+      <span class="demo-badge" id="demo-badge" title="Live PTV data isn't available right now, so a couple of simulated trains per line are shown instead.">SAMPLE DATA</span>
       <span id="status-text">Loading…</span>
     </div>
     <p class="note">
@@ -80,7 +80,7 @@ async function main() {
     currentRuns = snapshot.runs;
     demoBadge.classList.toggle("visible", isDemo);
     const generated = new Date(snapshot.generatedAtUtc);
-    const label = isDemo ? "Simulated demo trains" : `Live data as of ${generated.toLocaleTimeString()}`;
+    const label = isDemo ? "Sample preview — live data unavailable" : `Live data as of ${generated.toLocaleTimeString()}`;
     statusText.textContent = `${label} · ${currentRuns.length} train${currentRuns.length === 1 ? "" : "s"} tracked`;
   });
 

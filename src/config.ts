@@ -1,6 +1,6 @@
 /** Static, non-secret app config. Safe to bundle into the browser build. */
 
-export const APP_TITLE = "Where Is My Train?";
+export const APP_TITLE = "Dude, where's my train?";
 export const NETWORK_SUBTITLE = "Metro Trains Melbourne";
 
 /** Path to the committed, rarely-changing station/polyline data for every in-scope line (see scripts/generate-static-data.ts). */

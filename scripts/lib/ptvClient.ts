@@ -125,7 +125,7 @@ interface PtvDeparturesResponse {
 
 // --- Public helpers --------------------------------------------------------
 
-/** GET /v3/routes?route_types={routeType} — used to resolve the Lilydale route_id. */
+/** GET /v3/routes?route_types={routeType} — used to resolve each in-scope line's route_id. */
 export async function getRoutes(routeType: number, credentials: PtvCredentials): Promise<PtvRoute[]> {
   const res = await ptvGet<PtvRoutesResponse>(`/v3/routes?route_types=${routeType}`, credentials);
   return res.routes;

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A fun, real-time(ish) map of Metro Trains Melbourne's Lilydale line.",
+  "description": "Dude, where's my train? A fun, near real-time map of every Metro Trains Melbourne metropolitan line.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -7,9 +7,6 @@ export interface LegendLine {
 const VISIBLE_LINES_STORAGE_KEY = "wimt:visibleLineIds";
 const COLLAPSED_STORAGE_KEY = "wimt:legendCollapsed";
 
-/** Only the Lilydale line is shown by default for a first-ever visitor (no stored preference yet). */
-const DEFAULT_VISIBLE_LINE_IDS = ["lilydale"];
-
 function loadVisibleLineIds(allLineIds: readonly string[]): Set<string> {
   try {
     const raw = localStorage.getItem(VISIBLE_LINES_STORAGE_KEY);
@@ -24,7 +21,8 @@ function loadVisibleLineIds(allLineIds: readonly string[]): Set<string> {
   } catch {
     // Malformed/inaccessible storage (corrupted JSON, private-browsing quota, etc.) — fall through to default.
   }
-  return new Set(DEFAULT_VISIBLE_LINE_IDS.filter((id) => allLineIds.includes(id)));
+  // No stored preference yet (first-ever visit, or cleared storage): default to every line visible.
+  return new Set(allLineIds);
 }
 
 function saveVisibleLineIds(ids: ReadonlySet<string>): void {
@@ -56,11 +54,12 @@ function saveCollapsed(collapsed: boolean): void {
  * `container`, calling `onChange` with the current set of visible line ids
  * whenever it changes — including once synchronously during setup, so the
  * caller's initial state matches whatever was restored from `localStorage`
- * (or the Lilydale-only default on a first-ever visit).
+ * (or the all-lines-visible default on a first-ever visit).
  *
  * Both the line-visibility selection and the panel's collapsed/expanded state
  * are persisted to `localStorage` so a returning visitor sees their last
- * configuration instead of resetting every time.
+ * configuration instead of resetting every time. A first-ever visitor (no
+ * stored preference yet) sees every line visible by default.
  */
 export function createLegend(
   container: HTMLElement,
