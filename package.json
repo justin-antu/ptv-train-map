@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "generate:static-data": "tsx scripts/generate-static-data.ts",
+    "generate:timetable": "tsx scripts/generate-timetable.ts",
+    "verify:timetable": "tsx scripts/lib/timetable.test.ts",
     "fetch:live-data": "tsx scripts/fetch-live-data.ts"
   },
   "dependencies": {

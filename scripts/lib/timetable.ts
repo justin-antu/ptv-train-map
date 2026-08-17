@@ -1,0 +1,383 @@
+import { existsSync } from "node:fs";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { streamCsv } from "./csv.ts";
+import { getRoutes, ROUTE_TYPE_TRAIN, type PtvCredentials } from "./ptvClient.ts";
+import { IN_SCOPE_LINE_NAMES, lineIdFromName } from "./lines.ts";
+import type {
+  NetworkTimetableData,
+  TimetableDirection,
+  TimetableLine,
+  TimetableService,
+} from "../../src/shared/types.ts";
+
+export const MELBOURNE_TIMEZONE = "Australia/Melbourne";
+
+interface TripInfo {
+  id: string;
+  routeId: string;
+  serviceId: string;
+  directionId: string;
+  headsign: string;
+  activeDates: string[];
+}
+
+interface RawStopTime {
+  stopId: string;
+  sequence: number;
+  minutes: number;
+}
+
+interface CalendarRule {
+  startDate: string;
+  endDate: string;
+  weekdays: boolean[];
+}
+
+interface RouteInfo {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface GenerateTimetableOptions {
+  gtfsDir: string;
+  outputPath: string;
+  dates: string[];
+  credentials?: PtvCredentials;
+  generatedAt?: Date;
+}
+
+function compactGtfsDate(value: string): string {
+  return value.length === 8 ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value;
+}
+
+function weekdayIndex(date: string): number {
+  return new Date(`${date}T12:00:00Z`).getUTCDay();
+}
+
+export function melbourneDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: MELBOURNE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+export function melbourneDateRange(dayCount = 8, now = new Date()): string[] {
+  const today = melbourneDateString(now);
+  const cursor = new Date(`${today}T12:00:00Z`);
+  return Array.from({ length: dayCount }, (_, index) => {
+    const value = new Date(cursor);
+    value.setUTCDate(cursor.getUTCDate() + index);
+    return value.toISOString().slice(0, 10);
+  });
+}
+
+export function parseGtfsTime(value: string): number {
+  const match = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/.exec(value.trim());
+  if (!match) throw new Error(`Invalid GTFS time "${value}"`);
+  return Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 60;
+}
+
+/**
+ * Produces a deterministic station union that preserves every observed adjacent
+ * ordering where possible. Branch-only stations settle by average normalized
+ * position and name, so input-file ordering cannot scramble columns.
+ */
+export function unionStationOrder(sequences: string[][]): string[] {
+  const nodes = new Set(sequences.flat());
+  const edges = new Map<string, Set<string>>();
+  const indegree = new Map([...nodes].map((node) => [node, 0]));
+  const rankSamples = new Map<string, number[]>();
+
+  for (const sequence of sequences) {
+    sequence.forEach((node, index) => {
+      const samples = rankSamples.get(node) ?? [];
+      samples.push(sequence.length <= 1 ? 0 : index / (sequence.length - 1));
+      rankSamples.set(node, samples);
+      if (index === sequence.length - 1) return;
+      const next = sequence[index + 1];
+      if (node === next) return;
+      const outgoing = edges.get(node) ?? new Set<string>();
+      if (!outgoing.has(next)) {
+        outgoing.add(next);
+        indegree.set(next, (indegree.get(next) ?? 0) + 1);
+      }
+      edges.set(node, outgoing);
+    });
+  }
+
+  const averageRank = (node: string) => {
+    const samples = rankSamples.get(node) ?? [0];
+    return samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  };
+  const compare = (a: string, b: string) => averageRank(a) - averageRank(b) || a.localeCompare(b);
+  const ready = [...nodes].filter((node) => indegree.get(node) === 0).sort(compare);
+  const result: string[] = [];
+
+  while (ready.length > 0) {
+    const node = ready.shift()!;
+    result.push(node);
+    for (const next of edges.get(node) ?? []) {
+      indegree.set(next, (indegree.get(next) ?? 1) - 1);
+      if (indegree.get(next) === 0) {
+        ready.push(next);
+        ready.sort(compare);
+      }
+    }
+  }
+
+  // Circular/through-routed data can contain contradictory pairs. Keep every
+  // station and fall back to the stable aggregate rank for the cyclic remainder.
+  if (result.length < nodes.size) {
+    result.push(...[...nodes].filter((node) => !result.includes(node)).sort(compare));
+  }
+  return result;
+}
+
+function isServiceActive(
+  serviceId: string,
+  date: string,
+  calendars: Map<string, CalendarRule>,
+  exceptions: Map<string, Map<string, boolean>>,
+): boolean {
+  const exception = exceptions.get(serviceId)?.get(date);
+  if (exception !== undefined) return exception;
+  const rule = calendars.get(serviceId);
+  if (!rule || date < rule.startDate || date > rule.endDate) return false;
+  return rule.weekdays[weekdayIndex(date)];
+}
+
+async function loadGtfs(gtfsDir: string, dates: string[]) {
+  const routesById = new Map<string, RouteInfo>();
+  await streamCsv(path.join(gtfsDir, "routes.txt"), (row) => {
+    if ((IN_SCOPE_LINE_NAMES as readonly string[]).includes(row.route_short_name)) {
+      routesById.set(row.route_id, {
+        id: row.route_id,
+        name: row.route_short_name,
+        color: `#${row.route_color || "0052A4"}`,
+      });
+    }
+  });
+
+  const stopNames = new Map<string, string>();
+  await streamCsv(path.join(gtfsDir, "stops.txt"), (row) => {
+    stopNames.set(row.stop_id, row.stop_name.replace(/\s+Railway Station$|\s+Station$/i, "").trim());
+  });
+
+  const calendars = new Map<string, CalendarRule>();
+  const calendarPath = path.join(gtfsDir, "calendar.txt");
+  if (existsSync(calendarPath)) {
+    await streamCsv(calendarPath, (row) => {
+      calendars.set(row.service_id, {
+        startDate: compactGtfsDate(row.start_date),
+        endDate: compactGtfsDate(row.end_date),
+        weekdays: [
+          row.sunday === "1",
+          row.monday === "1",
+          row.tuesday === "1",
+          row.wednesday === "1",
+          row.thursday === "1",
+          row.friday === "1",
+          row.saturday === "1",
+        ],
+      });
+    });
+  }
+
+  const exceptions = new Map<string, Map<string, boolean>>();
+  const exceptionsPath = path.join(gtfsDir, "calendar_dates.txt");
+  if (existsSync(exceptionsPath)) {
+    await streamCsv(exceptionsPath, (row) => {
+      const byDate = exceptions.get(row.service_id) ?? new Map<string, boolean>();
+      byDate.set(compactGtfsDate(row.date), row.exception_type === "1");
+      exceptions.set(row.service_id, byDate);
+    });
+  }
+
+  const trips = new Map<string, TripInfo>();
+  await streamCsv(path.join(gtfsDir, "trips.txt"), (row) => {
+    if (!routesById.has(row.route_id)) return;
+    const activeDates = dates.filter((date) => isServiceActive(row.service_id, date, calendars, exceptions));
+    if (activeDates.length === 0) return;
+    trips.set(row.trip_id, {
+      id: row.trip_id,
+      routeId: row.route_id,
+      serviceId: row.service_id,
+      directionId: row.direction_id || "0",
+      headsign: row.trip_headsign ?? "",
+      activeDates,
+    });
+  });
+
+  const stopTimes = new Map<string, RawStopTime[]>();
+  await streamCsv(path.join(gtfsDir, "stop_times.txt"), (row) => {
+    if (!trips.has(row.trip_id)) return;
+    const departure = row.departure_time || row.arrival_time;
+    if (!departure) return;
+    const values = stopTimes.get(row.trip_id) ?? [];
+    values.push({
+      stopId: row.stop_id,
+      sequence: Number(row.stop_sequence),
+      minutes: parseGtfsTime(departure),
+    });
+    stopTimes.set(row.trip_id, values);
+  });
+
+  return { routesById, stopNames, trips, stopTimes };
+}
+
+function buildDirection(
+  directionId: string,
+  routeTrips: TripInfo[],
+  stopTimes: Map<string, RawStopTime[]>,
+  stopNames: Map<string, string>,
+  dates: string[],
+): TimetableDirection | null {
+  const usable = routeTrips
+    .map((trip) => ({ trip, stops: [...(stopTimes.get(trip.id) ?? [])].sort((a, b) => a.sequence - b.sequence) }))
+    .filter(({ stops }) => stops.length >= 2);
+  if (usable.length === 0) return null;
+
+  const stationStopIds = unionStationOrder(usable.map(({ stops }) => stops.map((stop) => stop.stopId)));
+  const columnByStop = new Map(stationStopIds.map((stopId, index) => [stopId, index]));
+  const dateIndex = new Map(dates.map((date, index) => [date, index]));
+  const services: TimetableService[] = [];
+  const destinationCounts = new Map<string, number>();
+
+  for (const { trip, stops } of usable) {
+    const destination = trip.headsign.trim() || stopNames.get(stops.at(-1)!.stopId) || "Destination unavailable";
+    destinationCounts.set(destination, (destinationCounts.get(destination) ?? 0) + 1);
+    const service: TimetableService = {
+      id: trip.id,
+      origin: stopNames.get(stops[0].stopId) ?? "Origin unavailable",
+      destination,
+      dateMask: trip.activeDates.reduce((mask, date) => mask | (1 << dateIndex.get(date)!), 0),
+      times: Array<number | null>(stationStopIds.length).fill(null),
+    };
+    for (const stop of stops) {
+      const column = columnByStop.get(stop.stopId);
+      if (column !== undefined) service.times[column] = Math.round(stop.minutes * 10) / 10;
+    }
+    services.push(service);
+  }
+
+  services.sort((a, b) => {
+    const firstA = a.times.find((time): time is number => time !== null) ?? Number.POSITIVE_INFINITY;
+    const firstB = b.times.find((time): time is number => time !== null) ?? Number.POSITIVE_INFINITY;
+    return firstA - firstB || a.id.localeCompare(b.id);
+  });
+  const endpoints = [...destinationCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const label = endpoints.length === 1
+    ? `Towards ${endpoints[0][0]}`
+    : `Towards ${endpoints.slice(0, 2).map(([name]) => name).join(" / ")}`;
+
+  return {
+    id: directionId,
+    label,
+    stationIds: stationStopIds.map((stopId) => lineIdFromName(stopNames.get(stopId) ?? stopId)),
+    stationNames: stationStopIds.map((stopId) => stopNames.get(stopId) ?? stopId),
+    services,
+  };
+}
+
+export function validateTimetable(data: NetworkTimetableData): void {
+  if (data.schemaVersion !== 1 || data.timezone !== MELBOURNE_TIMEZONE) throw new Error("Invalid timetable metadata");
+  if (data.availableDates.length !== 8 || new Set(data.availableDates).size !== 8) throw new Error("Expected eight unique dates");
+  if (data.lines.length === 0) throw new Error("Timetable contains no lines");
+  for (const line of data.lines) {
+    if (!line.id || line.directions.length === 0) throw new Error(`Line ${line.name || "(unknown)"} has no directions`);
+    for (const direction of line.directions) {
+      if (direction.stationIds.length !== direction.stationNames.length) throw new Error(`${line.name} station metadata mismatch`);
+      if (!Array.isArray(direction.services)) throw new Error(`${line.name} has invalid services`);
+      for (const service of direction.services) {
+        if (!Number.isInteger(service.dateMask) || service.dateMask <= 0 || service.dateMask > 255) {
+          throw new Error(`${line.name} service ${service.id} has an invalid date mask`);
+        }
+        if (service.times.length !== direction.stationIds.length) throw new Error(`${line.name} service ${service.id} column mismatch`);
+        if (service.times.some((time) => time !== null && (!Number.isFinite(time) || time < 0))) {
+          throw new Error(`${line.name} service ${service.id} has an invalid time`);
+        }
+      }
+    }
+  }
+}
+
+export async function generateTimetable(options: GenerateTimetableOptions): Promise<NetworkTimetableData> {
+  const generatedAt = options.generatedAt ?? new Date();
+  const warnings: string[] = [];
+  const { routesById, stopNames, trips, stopTimes } = await loadGtfs(options.gtfsDir, options.dates);
+  let ptvRouteMetadata: "verified" | "not-verified" = "not-verified";
+  let ptvVerifiedAtUtc: string | null = null;
+
+  if (options.credentials) {
+    try {
+      const apiNames = new Set((await getRoutes(ROUTE_TYPE_TRAIN, options.credentials)).map((route) => route.route_name));
+      const missing = IN_SCOPE_LINE_NAMES.filter((name) => !apiNames.has(name));
+      if (missing.length > 0) warnings.push(`PTV route metadata missing: ${missing.join(", ")}`);
+      else {
+        ptvRouteMetadata = "verified";
+        ptvVerifiedAtUtc = generatedAt.toISOString();
+      }
+    } catch (error) {
+      warnings.push(`PTV route metadata validation failed: ${error instanceof Error ? error.message.split("\n")[0] : "unknown error"}`);
+    }
+  } else {
+    warnings.push("PTV credentials unavailable; route metadata was not re-verified");
+  }
+
+  const lines: TimetableLine[] = [];
+  for (const lineName of IN_SCOPE_LINE_NAMES) {
+    const route = [...routesById.values()].find((candidate) => candidate.name === lineName);
+    if (!route) {
+      warnings.push(`GTFS route unavailable: ${lineName}`);
+      continue;
+    }
+    const routeTrips = [...trips.values()].filter((trip) => trip.routeId === route.id);
+    const directionIds = [...new Set(routeTrips.map((trip) => trip.directionId))].sort();
+    const directions = directionIds
+      .map((directionId) => buildDirection(directionId, routeTrips.filter((trip) => trip.directionId === directionId), stopTimes, stopNames, options.dates))
+      .filter((direction): direction is TimetableDirection => direction !== null);
+    if (directions.length === 0) {
+      warnings.push(`No active GTFS services for ${lineName} in requested date range`);
+      continue;
+    }
+    lines.push({ id: lineIdFromName(lineName), name: lineName, color: route.color, directions });
+  }
+
+  const data: NetworkTimetableData = {
+    schemaVersion: 1,
+    generatedAtUtc: generatedAt.toISOString(),
+    timezone: MELBOURNE_TIMEZONE,
+    availableDates: options.dates,
+    source: {
+      schedule: "Victorian GTFS Schedule",
+      ptvRouteMetadata,
+      ptvVerifiedAtUtc,
+      partial: warnings.some((warning) => /unavailable|No active|validation failed|missing/i.test(warning)),
+      warnings,
+    },
+    lines,
+  };
+  validateTimetable(data);
+  return data;
+}
+
+export async function writeTimetableAtomically(data: NetworkTimetableData, outputPath: string): Promise<void> {
+  const temporaryPath = `${outputPath}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(data)}\n`, "utf8");
+  try {
+    await rename(temporaryPath, outputPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
+export async function readTimetable(pathname: string): Promise<NetworkTimetableData> {
+  return JSON.parse(await readFile(pathname, "utf8")) as NetworkTimetableData;
+}

@@ -71,13 +71,24 @@ export class PtvApiError extends Error {
 }
 
 async function ptvGet<T>(pathAndQuery: string, credentials: PtvCredentials): Promise<T> {
-  const url = buildPtvUrl(pathAndQuery, credentials);
-  const res = await fetch(url);
-  if (!res.ok) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const url = buildPtvUrl(pathAndQuery, credentials);
+    const res = await fetch(url);
+    if (res.ok) return (await res.json()) as T;
+
     const body = await res.text().catch(() => "");
-    throw new PtvApiError(res.status, res.statusText, pathAndQuery, body);
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt === maxAttempts) {
+      throw new PtvApiError(res.status, res.statusText, pathAndQuery, body);
+    }
+    const retryAfterSeconds = Number(res.headers.get("retry-after"));
+    const delayMs = Number.isFinite(retryAfterSeconds)
+      ? retryAfterSeconds * 1000
+      : 500 * 2 ** (attempt - 1);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
-  return (await res.json()) as T;
+  throw new Error("Unreachable PTV retry state");
 }
 
 // --- Typed response shapes (only the fields we actually use) -------------

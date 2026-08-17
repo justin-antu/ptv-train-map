@@ -109,3 +109,45 @@ export interface LiveSnapshot {
    */
   disruptionsByLine?: Record<string, LineDisruption[]>;
 }
+
+/** A compact scheduled service. Times are minutes after the Melbourne service-day midnight; values >= 1440 cross midnight. */
+export interface TimetableService {
+  id: string;
+  destination: string;
+  origin: string;
+  /** Bit N means this service operates on availableDates[N] (eight dates maximum). */
+  dateMask: number;
+  /** One value per direction.stationIds entry; null means this service skips/does not use that station. */
+  times: (number | null)[];
+}
+
+export interface TimetableDirection {
+  id: string;
+  label: string;
+  stationIds: string[];
+  stationNames: string[];
+  /** Services are stored once and selected by dateMask to avoid repeating weekday schedules. */
+  services: TimetableService[];
+}
+
+export interface TimetableLine {
+  id: string;
+  name: string;
+  color: string;
+  directions: TimetableDirection[];
+}
+
+export interface NetworkTimetableData {
+  schemaVersion: 1;
+  generatedAtUtc: string;
+  timezone: "Australia/Melbourne";
+  availableDates: string[];
+  source: {
+    schedule: "Victorian GTFS Schedule";
+    ptvRouteMetadata: "verified" | "not-verified";
+    ptvVerifiedAtUtc: string | null;
+    partial: boolean;
+    warnings: string[];
+  };
+  lines: TimetableLine[];
+}

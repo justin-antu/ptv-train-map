@@ -1,0 +1,74 @@
+name: Refresh daily Metro timetable
+
+on:
+  # 16:30 UTC is 02:30 AEST / 03:30 AEDT, safely after Melbourne's new day.
+  schedule:
+    - cron: "30 16 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: refresh-timetable
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download official Metro GTFS schedule
+        run: |
+          set -euo pipefail
+          mkdir -p gtfs-download/metro-train
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output gtfs-download/gtfs.zip \
+            "https://opendata.transport.vic.gov.au/dataset/3f4e292e-7f8a-4ffe-831f-1953be0fe448/resource/fb152201-859f-4882-9206-b768060b50ad/download/gtfs.zip"
+          unzip -p gtfs-download/gtfs.zip "2/google_transit.zip" > gtfs-download/metro-train.zip
+          unzip -q gtfs-download/metro-train.zip -d gtfs-download/metro-train
+          test -s gtfs-download/metro-train/stop_times.txt
+
+      - name: Generate and validate timetable
+        env:
+          PTV_DEV_ID: ${{ secrets.PTV_DEV_ID }}
+          PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
+        run: |
+          set -euo pipefail
+          npm run verify:timetable
+          npm run generate:timetable
+
+      - name: Commit timetable only when changed
+        id: commit
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- public/data/network-timetable.json; then
+            echo "No timetable change; skipping commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/network-timetable.json
+          git commit -m "chore(data): refresh scheduled Metro timetable ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          git pull --rebase --autostash
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Pages deploy for new timetable
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy.yml --ref main
