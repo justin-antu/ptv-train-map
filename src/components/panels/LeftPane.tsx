@@ -2,7 +2,6 @@ import { SearchCard } from "./SearchCard";
 import { SelectedInfoCard } from "./SelectedInfoCard";
 import { FavouriteCard } from "./FavouriteCard";
 import { LegendCard } from "./LegendCard";
-import { AlertsCard } from "./AlertsCard";
 import type { LineDisruption, LiveRun, NetworkStaticData, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
 import type { VisibleLinesController } from "../../hooks/useVisibleLines";
@@ -80,8 +79,6 @@ export function LeftPane({
         visibleLines={visibleLines}
         disruptionsByLine={disruptionsByLine}
       />
-
-      <AlertsCard disruptionsByLine={disruptionsByLine} lineNameById={lineNameById} lineColorById={lineColorById} />
     </div>
   );
 }

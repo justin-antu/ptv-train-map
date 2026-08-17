@@ -6,6 +6,7 @@ export interface UpcomingStop {
   runRef: string;
   timeUtc: string;
   scheduledTimeUtc: string;
+  isEstimate: boolean;
   /** Minutes late (0 or negative = on time/early), derived from timeUtc - scheduledTimeUtc. */
   delayMin: number;
 }
@@ -36,16 +37,19 @@ export function delayMinutesFor(stop: { timeUtc: string; scheduledTimeUtc: strin
 export function upcomingStopsForStation(station: StationStatic, runs: LiveRun[], now: number): UpcomingStop[] {
   const results: UpcomingStop[] = [];
   for (const run of runs) {
-    if (!station.lineIds.includes(run.lineId)) continue;
+    // Match the exact stop carried by live data rather than pre-filtering by
+    // StationStatic.lineIds. That static list can lag route changes (notably
+    // Metro Tunnel services), while a run containing this stop is definitive.
     for (const stop of run.stops) {
       if (stop.stationId !== station.id) continue;
       const t = Date.parse(stop.timeUtc);
-      if (t < now) continue;
+      if (!Number.isFinite(t) || t < now) continue;
       results.push({
         lineId: run.lineId,
         runRef: run.runRef,
         timeUtc: stop.timeUtc,
         scheduledTimeUtc: stop.scheduledTimeUtc,
+        isEstimate: stop.isEstimate,
         delayMin: delayMinutesFor(stop),
       });
     }

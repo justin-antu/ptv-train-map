@@ -86,6 +86,8 @@ export interface LineDisruption {
   url: string | null;
   /** PTV's own disruption_type label, e.g. "Planned Works", "Station detour". */
   disruptionType: string;
+  /** PTV's lifecycle status when supplied by the current snapshot, e.g. "Current". */
+  disruptionStatus?: string;
   /** ISO 8601 UTC start time, if known. */
   fromDateUtc: string | null;
   /** ISO 8601 UTC end time, if known (open-ended disruptions have no end date yet). */

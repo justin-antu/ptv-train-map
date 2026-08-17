@@ -127,6 +127,7 @@ function toLineDisruption(d: PtvDisruption): LineDisruption {
     title: d.title,
     url: d.url,
     disruptionType: d.disruption_type,
+    disruptionStatus: d.disruption_status,
     fromDateUtc: d.from_date,
     toDateUtc: d.to_date,
   };

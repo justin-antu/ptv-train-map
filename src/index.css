@@ -69,12 +69,38 @@
   body {
     @apply bg-background text-foreground;
     font-family:
-      system-ui,
-      -apple-system,
-      "Segoe UI",
-      Roboto,
-      sans-serif;
+      "Source Serif 4",
+      "Iowan Old Style",
+      "Palatino Linotype",
+      Georgia,
+      serif;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    text-rendering: optimizeLegibility;
   }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+  input::placeholder {
+    opacity: 0.78;
+  }
+}
+
+/* Shared, static side-pane treatment. The map/header/footer remain untouched. */
+.side-pane-grid {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.12) 0.8px, transparent 0.9px);
+  background-position: 0 0;
+  background-size: 18px 18px;
+}
+
+.dark .side-pane-grid {
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.16) 0.8px, transparent 0.9px);
 }
 
 /*

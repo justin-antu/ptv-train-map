@@ -3,7 +3,7 @@ import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { MapView, type MapViewHandle } from "./components/MapView";
 import { LeftPane } from "./components/panels/LeftPane";
-import { RightPanePlaceholder } from "./components/panels/RightPanePlaceholder";
+import { FlindersDepartureBoard } from "./components/panels/FlindersDepartureBoard";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
@@ -35,14 +35,6 @@ export default function App() {
   const favouriteStation = favourite.favouriteId ? stationsById.get(favourite.favouriteId) : undefined;
   const notifications = useNotifications(favourite.favouriteId, favouriteStation, live.runs);
 
-  const disruptionCount = useMemo(
-    () => new Set(Object.values(live.disruptionsByLine).flat().map((d) => d.id)).size,
-    [live.disruptionsByLine],
-  );
-  // "Active" = lines currently running at least one train, per the live data
-  // snapshot — distinct from (and more meaningful here than) which lines the
-  // user has toggled on in the legend, which is just a display preference.
-  const linesWithActiveService = useMemo(() => new Set(live.runs.map((r) => r.lineId)).size, [live.runs]);
   // Trains actually in service right now, not `live.runs.length` — the live
   // snapshot fetches up to ~12 upcoming departures per station, most of
   // which are scheduled well into the future, not currently running. Only
@@ -50,12 +42,6 @@ export default function App() {
   const trainsRunningNow = useMemo(
     () => countActiveRuns(live.runs, Date.now(), { staleAfterMs: RUN_STALE_AFTER_MS, showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS }),
     [live.runs],
-  );
-
-  const stationCount = staticData?.stations.length ?? 0;
-  const rightPaneStats = useMemo(
-    () => ({ trainsRunning: trainsRunningNow, linesActive: linesWithActiveService, stationCount, disruptionCount }),
-    [trainsRunningNow, linesWithActiveService, stationCount, disruptionCount],
   );
 
   const flyToAndSelect = useCallback((station: StationStatic) => {
@@ -99,7 +85,7 @@ export default function App() {
         <Header theme={theme} onThemeChange={setTheme} isDemo={live.isDemo} generatedAtUtc={live.generatedAtUtc} trainCount={trainsRunningNow} />
 
         <div className="flex flex-1 flex-col lg:grid lg:grid-cols-[20%_60%_20%] lg:grid-rows-[1fr] lg:overflow-hidden">
-          <aside className="thin-scrollbar order-2 border-t border-border bg-muted/20 p-3 lg:order-none lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-r">
+          <aside className="side-pane-grid thin-scrollbar order-2 border-t border-border p-3 lg:order-none lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-r">
             <LeftPane
               staticData={staticData}
               stationsById={stationsById}
@@ -134,8 +120,8 @@ export default function App() {
             />
           </main>
 
-          <aside className="hidden border-border lg:order-none lg:block lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-l">
-            <RightPanePlaceholder stats={rightPaneStats} />
+          <aside className="side-pane-grid order-3 min-h-[32rem] border-t border-border p-3 lg:order-none lg:block lg:h-full lg:min-h-0 lg:border-t-0 lg:border-l">
+            <FlindersDepartureBoard lines={staticData.lines} stations={staticData.stations} runs={live.runs} />
           </aside>
         </div>
 
