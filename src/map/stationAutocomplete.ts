@@ -39,7 +39,7 @@ export function createStationAutocomplete(
   stations: readonly StationStatic[],
   options: { placeholder: string; onSelect: (station: StationStatic) => void },
 ): StationAutocompleteController {
-  container.className = "station-autocomplete";
+  container.classList.add("station-autocomplete");
   container.innerHTML = `
     <input type="text" class="station-autocomplete-input" placeholder="${escapeHtml(options.placeholder)}" autocomplete="off" spellcheck="false" />
     <div class="station-autocomplete-results"></div>

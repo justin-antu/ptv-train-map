@@ -7,6 +7,7 @@ import { createLegend } from "./map/legend";
 import { createInfoCardController } from "./map/infoCard";
 import { createFavouriteBoard } from "./map/favourite";
 import { createStationAutocomplete } from "./map/stationAutocomplete";
+import { createTripPlannerPanel } from "./map/tripPlannerPanel";
 import { startAnimationLoop } from "./trains/animate";
 import { buildInterpolationContext, computeTrainPositions } from "./trains/interpolate";
 import { TrainMarkerLayer } from "./trains/trainMarkers";
@@ -32,6 +33,7 @@ app.innerHTML = `
     <div class="station-autocomplete" id="station-search"></div>
     <div class="fav-board" id="fav-board"></div>
     <div class="legend" id="legend"></div>
+    <div class="trip-planner" id="trip-planner"></div>
   </div>
 `;
 
@@ -42,11 +44,11 @@ async function main() {
   const legendContainer = document.getElementById("legend");
   const favBoardContainer = document.getElementById("fav-board");
   const searchContainer = document.getElementById("station-search");
-  if (!mapContainer || !statusText || !demoBadge || !legendContainer || !favBoardContainer || !searchContainer) return;
+  const tripPlannerContainer = document.getElementById("trip-planner");
+  if (!mapContainer || !statusText || !demoBadge || !legendContainer || !favBoardContainer || !searchContainer || !tripPlannerContainer) return;
 
   const staticData = await loadStaticData();
   const map = createMap(mapContainer, staticData);
-  (window as unknown as { __WIMT_MAP__?: unknown }).__WIMT_MAP__ = map;
   addLineAndStations(map, staticData);
   setupStationHoverCursor(map);
 
@@ -109,6 +111,8 @@ async function main() {
     },
   });
 
+  const tripPlanner = createTripPlannerPanel(tripPlannerContainer, staticData.stations, stationsById, lineNameById, lineColorById);
+
   let currentRuns: LiveRun[] = [];
 
   pollLiveData(staticData, LIVE_POLL_INTERVAL_MS, (snapshot, isDemo) => {
@@ -129,6 +133,7 @@ async function main() {
     trainMarkers.update(visiblePositions);
     infoCard.refresh(currentRuns, visiblePositions, now);
     favourite.update(currentRuns, now);
+    tripPlanner.update(currentRuns, now);
   });
 }
 

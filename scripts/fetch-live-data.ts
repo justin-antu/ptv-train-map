@@ -51,7 +51,14 @@ import type { LineDisruption, LiveRun, LiveRunStop, LiveSnapshot, NetworkStaticD
 
 const STATIC_DATA_PATH = path.resolve("public/data/network-static.json");
 const OUTPUT_PATH = path.resolve("public/data/network-live.json");
-const MAX_RESULTS_PER_STOP = Number(process.env.MAX_RESULTS_PER_STOP ?? 6);
+// Deliberately deeper than earlier single-line versions of this script (6):
+// the trip planner and the favourite-station board both need to find a
+// specific *other* station within the same run's fetched stop list, which
+// only works if the window is long enough to plausibly span the distance
+// between two stations on a line (or two legs of a one-interchange trip).
+// This costs nothing extra request-wise (still one request per (line, stop)
+// pair) — only a larger, still-small JSON payload per request.
+const MAX_RESULTS_PER_STOP = Number(process.env.MAX_RESULTS_PER_STOP ?? 12);
 const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY ?? 8);
 
 function normalizeStationName(name: string): string {

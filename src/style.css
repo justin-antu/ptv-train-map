@@ -242,6 +242,67 @@ body {
   min-height: 0;
 }
 
+.trip-planner-field {
+  margin-bottom: 8px;
+}
+
+.trip-planner-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 3px;
+}
+
+.trip-planner .station-autocomplete {
+  margin-top: 0;
+}
+
+.trip-planner-results {
+  margin-top: 4px;
+}
+
+.trip-interchange-note {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+.trip-option {
+  padding: 6px 0;
+}
+
+.trip-option + .trip-option {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.trip-leg {
+  padding: 2px 0;
+}
+
+.trip-leg-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.trip-leg-detail {
+  font-size: 11px;
+  color: #444;
+  margin: 2px 0 2px 17px;
+}
+
+.trip-leg + .trip-leg {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.12);
+}
+
 .legend-header {
   display: flex;
   align-items: center;
