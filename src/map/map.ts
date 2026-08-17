@@ -129,10 +129,36 @@ const STATION_PAINT_BY_THEME: Record<MapTheme, { circleFill: string; circleStrok
  * pixel-perfect PTV map styling.
  */
 export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData, theme: MapTheme = "light"): void {
+  if (map.isStyleLoaded()) {
+    drawLinesAndStations(map, staticData, theme);
+  } else {
+    // Only reachable right after map creation (the very first style hasn't
+    // finished loading yet) — the map's native "load" event fires exactly
+    // once per map instance, the first time its style+sources are ready, so
+    // this branch must never be relied on again after that (see
+    // `setMapTheme`, which calls `drawLinesAndStations` directly instead,
+    // since "load" won't fire a second time after a later `setStyle()`).
+    map.on("load", () => drawLinesAndStations(map, staticData, theme));
+  }
+}
+
+/**
+ * Actually adds the line/station sources+layers — safe to call as soon as
+ * the *current* style is known to have loaded (either the map's one-time
+ * "load" event, above, or a `setStyle()` call's "style.load" event, in
+ * `setMapTheme` below). Deliberately does NOT itself check
+ * `map.isStyleLoaded()`: right when "style.load" has just fired, the style
+ * *document* is loaded but `isStyleLoaded()` can still briefly report false
+ * (e.g. while the freshly-added raster source's own tiles are still in
+ * flight) — checking it here would wrongly bounce into the "wait for load"
+ * path above, which (per that comment) never actually re-fires after the
+ * first time and would permanently strand the line/station layers.
+ */
+function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData, theme: MapTheme): void {
   const palette = STATION_PAINT_BY_THEME[theme];
 
-  const draw = () => {
-    if (map.getSource(LINES_SOURCE_ID)) return; // already drawn (e.g. re-entrant "load" handling)
+  {
+    if (map.getSource(LINES_SOURCE_ID)) return; // already drawn (e.g. re-entrant handling)
 
     map.addSource(LINES_SOURCE_ID, {
       type: "geojson",
@@ -202,12 +228,6 @@ export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStati
         "text-halo-width": 1.4,
       },
     });
-  };
-
-  if (map.isStyleLoaded()) {
-    draw();
-  } else {
-    map.on("load", draw);
   }
 }
 
@@ -224,9 +244,24 @@ export function setMapTheme(
   staticData: NetworkStaticData,
   visibleLineIds: ReadonlySet<string>,
 ): void {
-  map.setStyle(BASEMAP_STYLES[theme]);
+  // `diff: false` forces a *full* style reload rather than MapLibre's default
+  // diff-based update. This matters because `'style.load'` — which we rely on
+  // below to know when it's safe to re-add our custom sources/layers — is
+  // ONLY fired on a full reload; the diff path (the default) only fires
+  // 'data'/'styledata' events, so with the default `diff: true` our
+  // `.once('style.load', ...)` callback below would simply never run and the
+  // line/station layers would silently stay gone after every basemap swap.
+  // This is a known MapLibre/Mapbox GL JS gotcha (`style.load` is a private,
+  // full-reload-only event) — see e.g. maplibre/maplibre-gl-js#2587 and
+  // mapbox/mapbox-gl-js#7579 for the same issue and this same fix.
+  map.setStyle(BASEMAP_STYLES[theme], { diff: false });
   map.once("style.load", () => {
-    addLineAndStations(map, staticData, theme);
+    // Call the draw step directly rather than `addLineAndStations` — we're
+    // already inside "style.load", so re-checking `isStyleLoaded()` here
+    // would risk falling into the "wait for load" fallback, which (per
+    // `addLineAndStations`'s comment) can never fire again after the map's
+    // first ever load and would leave the layers stuck missing.
+    drawLinesAndStations(map, staticData, theme);
     setVisibleLines(map, visibleLineIds);
   });
 }

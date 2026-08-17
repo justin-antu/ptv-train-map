@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
-import { DisruptionsMarquee } from "./components/DisruptionsMarquee";
 import { MapView, type MapViewHandle } from "./components/MapView";
 import { LeftPane } from "./components/panels/LeftPane";
 import { RightPanePlaceholder } from "./components/panels/RightPanePlaceholder";
@@ -76,7 +75,6 @@ export default function App() {
     <TooltipProvider>
       <BlurFade duration={0.5} offset={10} className="flex min-h-dvh flex-col bg-background text-foreground lg:h-dvh lg:overflow-hidden">
         <Header theme={theme} onThemeChange={setTheme} isDemo={live.isDemo} generatedAtUtc={live.generatedAtUtc} trainCount={live.runs.length} />
-        <DisruptionsMarquee disruptionsByLine={live.disruptionsByLine} lineNameById={lineNameById} lineColorById={lineColorById} />
 
         <div className="flex flex-1 flex-col lg:grid lg:grid-cols-[20%_60%_20%] lg:grid-rows-[1fr] lg:overflow-hidden">
           <aside className="thin-scrollbar order-2 border-t border-border bg-muted/20 p-3 lg:order-none lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-r">

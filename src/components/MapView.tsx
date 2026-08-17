@@ -42,6 +42,16 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const runsRef = useRef<LiveRun[]>(runs);
   const visibleLineIdsRef = useRef<Set<string>>(visibleLineIds);
   const themeRef = useRef<Theme>(theme);
+  // Tracks whichever theme the *current* map instance's basemap actually
+  // reflects, so the effect below can tell "theme prop changed since the map
+  // was created/last swapped" apart from "component re-rendered for some
+  // unrelated reason" — set once at map-creation time (not just on the very
+  // first render), so it's re-derived correctly if the mount effect ever
+  // re-runs (e.g. React StrictMode's dev-only double-invoke), unlike a
+  // one-shot "is this the first render" flag which can't tell those cases
+  // apart and previously caused a spurious extra basemap swap right after a
+  // StrictMode-triggered remount.
+  const appliedThemeRef = useRef<Theme | null>(null);
 
   useEffect(() => {
     runsRef.current = runs;
@@ -62,6 +72,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     const map = createMap(container, staticData, themeRef.current);
     mapRef.current = map;
+    appliedThemeRef.current = themeRef.current;
     addLineAndStations(map, staticData, themeRef.current);
     setupStationHoverCursor(map);
 
@@ -94,16 +105,14 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staticData]);
 
-  // Basemap swap: re-run whenever the theme prop changes after mount (the
-  // initial theme is already applied at map-creation time above).
-  const isFirstThemeRender = useRef(true);
+  // Basemap swap: only when `theme` has actually changed from whatever the
+  // current map instance was created/last swapped to (see appliedThemeRef
+  // above) — not on every render/effect re-run.
   useEffect(() => {
     themeRef.current = theme;
-    if (isFirstThemeRender.current) {
-      isFirstThemeRender.current = false;
-      return;
-    }
-    if (mapRef.current) setMapTheme(mapRef.current, theme, staticData, visibleLineIdsRef.current);
+    if (!mapRef.current || appliedThemeRef.current === theme) return;
+    appliedThemeRef.current = theme;
+    setMapTheme(mapRef.current, theme, staticData, visibleLineIdsRef.current);
   }, [theme, staticData]);
 
   useImperativeHandle(
