@@ -3,29 +3,45 @@ import type { StyleSpecification } from "maplibre-gl";
 import type { NetworkStaticData } from "../shared/types";
 
 /**
- * Keyless raster basemap using OpenStreetMap's standard tile server, plus a
- * free public glyphs CDN (openmaptiles.org) so that MapLibre symbol/text
- * layers (station name labels) can render without needing any API key or
- * Mapbox account — matches the "static site, no accounts required" constraint.
+ * Keyless raster basemap using CARTO's free "Positron" tiles, plus a free
+ * public glyphs CDN (openmaptiles.org) so that MapLibre symbol/text layers
+ * (station name labels) can render without needing any API key or account —
+ * matches the "static site, no accounts required" constraint.
+ *
+ * We deliberately use Positron (a light-grey, minimal "good for point data"
+ * style, built on the same OpenStreetMap data as the previous standard-OSM
+ * tiles) rather than a busier full-colour basemap: with 16 coloured train
+ * lines and 90+ animated markers on screen at once, a visually loud basemap
+ * (saturated land-use colours, dense POI icons, thick roads) competes with
+ * and drowns out the data we actually want to be the visual focus. Positron's
+ * muted roads/labels and near-white background let the line colours and
+ * train markers read clearly at a glance.
  */
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
   glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
   sources: {
-    osm: {
+    "carto-positron": {
       type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      // CARTO round-robins requests across these 4 keyless subdomains.
+      tiles: [
+        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+      ],
       tileSize: 256,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     },
   },
   layers: [
     {
-      id: "osm-tiles",
+      id: "carto-positron-tiles",
       type: "raster",
-      source: "osm",
+      source: "carto-positron",
       minzoom: 0,
-      maxzoom: 19,
+      maxzoom: 20,
     },
   ],
 };
@@ -178,4 +194,22 @@ export function setVisibleLines(map: maplibregl.Map, visibleLineIds: ReadonlySet
   const filter: maplibregl.FilterSpecification = ["in", ["get", "lineId"], ["literal", [...visibleLineIds]]];
   if (map.getLayer(LINE_LAYER_ID)) map.setFilter(LINE_LAYER_ID, filter);
   if (map.getLayer(LINE_CASING_LAYER_ID)) map.setFilter(LINE_CASING_LAYER_ID, filter);
+}
+
+/** Returns the clicked station's id, or null if the given point didn't land on a station dot. */
+export function queryStationIdAt(map: maplibregl.Map, point: maplibregl.PointLike): string | null {
+  if (!map.getLayer(STATIONS_CIRCLE_LAYER_ID)) return null;
+  const features = map.queryRenderedFeatures(point, { layers: [STATIONS_CIRCLE_LAYER_ID] });
+  const id = features[0]?.properties?.id;
+  return typeof id === "string" ? id : null;
+}
+
+/** Toggles the pointer cursor while hovering over station dots, for a basic clickability affordance. */
+export function setupStationHoverCursor(map: maplibregl.Map): void {
+  map.on("mouseenter", STATIONS_CIRCLE_LAYER_ID, () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", STATIONS_CIRCLE_LAYER_ID, () => {
+    map.getCanvas().style.cursor = "";
+  });
 }

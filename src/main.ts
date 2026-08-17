@@ -2,8 +2,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { APP_TITLE, LIVE_POLL_INTERVAL_MS, NETWORK_SUBTITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
 import { loadStaticData, pollLiveData } from "./data/loadData";
-import { addLineAndStations, createMap, setVisibleLines } from "./map/map";
+import { addLineAndStations, createMap, queryStationIdAt, setupStationHoverCursor, setVisibleLines } from "./map/map";
 import { createLegend } from "./map/legend";
+import { createInfoCardController } from "./map/infoCard";
 import { startAnimationLoop } from "./trains/animate";
 import { buildInterpolationContext, computeTrainPositions } from "./trains/interpolate";
 import { TrainMarkerLayer } from "./trains/trainMarkers";
@@ -40,11 +41,28 @@ async function main() {
   const staticData = await loadStaticData();
   const map = createMap(mapContainer, staticData);
   addLineAndStations(map, staticData);
+  setupStationHoverCursor(map);
 
   const lineColorById = new Map(staticData.lines.map((l) => [l.id, l.color]));
+  const lineNameById = new Map(staticData.lines.map((l) => [l.id, l.name]));
   const stationsById = new Map(staticData.stations.map((s) => [s.id, s]));
   const interpolationContext = buildInterpolationContext(staticData);
-  const trainMarkers = new TrainMarkerLayer(map, lineColorById);
+
+  const infoCard = createInfoCardController(map, stationsById, lineNameById, lineColorById);
+  const trainMarkers = new TrainMarkerLayer(map, lineColorById, (pos) => {
+    infoCard.showTrain(pos, currentRuns, Date.now());
+  });
+
+  // A click that doesn't land on a station dot (train marker clicks never reach
+  // this handler at all — see infoCard.ts's doc comment) dismisses any open card.
+  map.on("click", (e) => {
+    const stationId = queryStationIdAt(map, e.point);
+    if (stationId) {
+      infoCard.showStation(stationId, currentRuns, Date.now());
+    } else {
+      infoCard.closeForBackgroundClick();
+    }
+  });
 
   let visibleLineIds = new Set(staticData.lines.map((l) => l.id));
   createLegend(
@@ -73,6 +91,7 @@ async function main() {
     });
     const visiblePositions = positions.filter((p) => visibleLineIds.has(p.lineId));
     trainMarkers.update(visiblePositions);
+    infoCard.refresh(currentRuns, visiblePositions, now);
   });
 }
 

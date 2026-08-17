@@ -1,13 +1,20 @@
 import maplibregl from "maplibre-gl";
 import type { TrainPosition } from "./interpolate";
 
+interface TrackedMarker {
+  marker: maplibregl.Marker;
+  /** Kept in sync every update() so the click handler (bound once, at creation) always reports the current position. */
+  position: TrainPosition;
+}
+
 /** Manages one MapLibre Marker per active train run, adding/moving/removing as needed each frame. */
 export class TrainMarkerLayer {
-  private readonly markers = new Map<string, maplibregl.Marker>();
+  private readonly markers = new Map<string, TrackedMarker>();
 
   constructor(
     private readonly map: maplibregl.Map,
     private readonly lineColorById: Map<string, string>,
+    private readonly onTrainClick?: (position: TrainPosition) => void,
   ) {}
 
   update(positions: TrainPosition[]): void {
@@ -21,34 +28,46 @@ export class TrainMarkerLayer {
       // marker that flickers between both lines' (unrelated) positions.
       const key = `${pos.lineId}:${pos.runRef}`;
       seen.add(key);
-      let marker = this.markers.get(key);
-      if (!marker) {
+      let tracked = this.markers.get(key);
+      if (!tracked) {
         const el = document.createElement("div");
         el.className = "train-marker";
         el.dataset.key = key;
         el.innerHTML = `<span class="train-marker-dot"></span><span class="train-marker-icon">🚆</span>`;
-        marker = new maplibregl.Marker({ element: el, anchor: "center" });
+        const marker = new maplibregl.Marker({ element: el, anchor: "center" });
         marker.setLngLat([pos.lon, pos.lat]);
         marker.addTo(this.map);
-        this.markers.set(key, marker);
+        const created: TrackedMarker = { marker, position: pos };
+        this.markers.set(key, created);
+        tracked = created;
+
+        // Bound once per marker element (not per update()): reads `created.position`
+        // at click time, which update() below keeps current every frame, so this
+        // always reports wherever the train actually is *now*, not where it was
+        // when the listener was attached.
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.onTrainClick?.(created.position);
+        });
       }
-      const el = marker.getElement();
+      tracked.position = pos;
+      const el = tracked.marker.getElement();
       el.title = `To ${pos.destinationName}`;
       const dot = el.querySelector<HTMLElement>(".train-marker-dot");
       if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
-      marker.setLngLat([pos.lon, pos.lat]);
+      tracked.marker.setLngLat([pos.lon, pos.lat]);
     }
 
-    for (const [key, marker] of this.markers) {
+    for (const [key, tracked] of this.markers) {
       if (!seen.has(key)) {
-        marker.remove();
+        tracked.marker.remove();
         this.markers.delete(key);
       }
     }
   }
 
   removeAll(): void {
-    for (const marker of this.markers.values()) marker.remove();
+    for (const tracked of this.markers.values()) tracked.marker.remove();
     this.markers.clear();
   }
 }
