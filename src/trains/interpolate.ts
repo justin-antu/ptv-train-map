@@ -1,8 +1,9 @@
-import type { LiveRun, StationStatic } from "../shared/types";
+import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
 import { cumulativeDistances, nearestDistanceAlong, pointAtDistance } from "./polylineGeo";
 
 export interface TrainPosition {
   runRef: string;
+  lineId: string;
   destinationName: string;
   lon: number;
   lat: number;
@@ -12,23 +13,32 @@ export interface TrainPosition {
   toStationId: string;
 }
 
-export interface InterpolationContext {
-  /** Distance (metres) along `polyline` for each station, keyed by station id. */
+/** Per-line geometry needed to interpolate along that line's own polyline/station positions. */
+interface LineInterpolationContext {
+  /** Distance (metres) along this line's polyline for each of its stations, keyed by station id. */
   stationDistances: Map<string, number>;
   cumDist: number[];
   polyline: [number, number][];
 }
 
-export function buildInterpolationContext(
-  stations: StationStatic[],
-  polyline: [number, number][],
-): InterpolationContext {
-  const cumDist = cumulativeDistances(polyline);
-  const stationDistances = new Map<string, number>();
-  for (const station of stations) {
-    stationDistances.set(station.id, nearestDistanceAlong(polyline, cumDist, [station.lon, station.lat]));
+/** Maps line id -> that line's interpolation geometry. A shared station (e.g. Flinders Street) has a different distance-along-track per line, so this must stay keyed per line rather than globally. */
+export type InterpolationContext = Map<string, LineInterpolationContext>;
+
+export function buildInterpolationContext(staticData: NetworkStaticData): InterpolationContext {
+  const stationsById = new Map(staticData.stations.map((s) => [s.id, s]));
+  const context: InterpolationContext = new Map();
+
+  for (const line of staticData.lines) {
+    const cumDist = cumulativeDistances(line.polyline);
+    const stationDistances = new Map<string, number>();
+    for (const stationId of line.stationIds) {
+      const station = stationsById.get(stationId);
+      if (!station) continue;
+      stationDistances.set(stationId, nearestDistanceAlong(line.polyline, cumDist, [station.lon, station.lat]));
+    }
+    context.set(line.id, { stationDistances, cumDist, polyline: line.polyline });
   }
-  return { stationDistances, cumDist, polyline };
+  return context;
 }
 
 export interface InterpolationOptions {
@@ -39,14 +49,14 @@ export interface InterpolationOptions {
 }
 
 /**
- * Computes the current geographic position of every "in progress" train run, by
- * finding which pair of consecutive predicted stop-times bracket `now`, then
- * interpolating along the track polyline (not a straight line) between those two
- * stations' projected positions.
+ * Computes the current geographic position of every "in progress" train run
+ * across every line, by finding which pair of consecutive predicted stop-times
+ * bracket `now`, then interpolating along that run's line's track polyline
+ * (not a straight line) between those two stations' projected positions.
  *
  * This is a simplification appropriate for v1: it assumes a run's predicted stop
  * times, sorted chronologically, correspond to the physical station order along
- * the line. This holds for all-stops services; express/limited-stops services
+ * its line. This holds for all-stops services; express/limited-stops services
  * that skip stations may show the train "teleporting" across the skipped gap
  * rather than slowing down, since we have no predicted time for the skipped stop.
  */
@@ -63,6 +73,9 @@ export function computeTrainPositions(
     const stops = run.stops;
     if (stops.length === 0) continue;
 
+    const lineContext = context.get(run.lineId);
+    if (!lineContext) continue;
+
     const firstTime = Date.parse(stops[0].timeUtc);
     const lastTime = Date.parse(stops[stops.length - 1].timeUtc);
 
@@ -72,6 +85,7 @@ export function computeTrainPositions(
         if (station) {
           positions.push({
             runRef: run.runRef,
+            lineId: run.lineId,
             destinationName: run.destinationName,
             lon: station.lon,
             lat: station.lat,
@@ -90,6 +104,7 @@ export function computeTrainPositions(
         if (station) {
           positions.push({
             runRef: run.runRef,
+            lineId: run.lineId,
             destinationName: run.destinationName,
             lon: station.lon,
             lat: station.lat,
@@ -113,8 +128,8 @@ export function computeTrainPositions(
         if (!stationA || !stationB) break;
 
         const progress = tB === tA ? 1 : (now - tA) / (tB - tA);
-        const distA = context.stationDistances.get(stationA.id);
-        const distB = context.stationDistances.get(stationB.id);
+        const distA = lineContext.stationDistances.get(stationA.id);
+        const distB = lineContext.stationDistances.get(stationB.id);
 
         let lon: number;
         let lat: number;
@@ -124,11 +139,12 @@ export function computeTrainPositions(
           lat = stationA.lat + (stationB.lat - stationA.lat) * progress;
         } else {
           const targetDist = distA + (distB - distA) * progress;
-          [lon, lat] = pointAtDistance(context.polyline, context.cumDist, targetDist);
+          [lon, lat] = pointAtDistance(lineContext.polyline, lineContext.cumDist, targetDist);
         }
 
         positions.push({
           runRef: run.runRef,
+          lineId: run.lineId,
           destinationName: run.destinationName,
           lon,
           lat,

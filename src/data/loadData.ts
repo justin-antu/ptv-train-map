@@ -1,13 +1,13 @@
 import { LIVE_DATA_URL, STATIC_DATA_URL } from "../config";
-import type { LiveSnapshot, StaticLineData } from "../shared/types";
+import type { LiveSnapshot, NetworkStaticData } from "../shared/types";
 import { generateDemoSnapshot } from "./demoData";
 
-export async function loadStaticData(): Promise<StaticLineData> {
+export async function loadStaticData(): Promise<NetworkStaticData> {
   const res = await fetch(STATIC_DATA_URL);
   if (!res.ok) {
-    throw new Error(`Failed to load static line data (${res.status} ${res.statusText})`);
+    throw new Error(`Failed to load static network data (${res.status} ${res.statusText})`);
   }
-  return (await res.json()) as StaticLineData;
+  return (await res.json()) as NetworkStaticData;
 }
 
 function isValidLiveSnapshot(value: unknown): value is LiveSnapshot {
@@ -26,7 +26,7 @@ function isValidLiveSnapshot(value: unknown): value is LiveSnapshot {
  * happened) showing a sensible, moving map instead of a blank/broken page.
  */
 export async function loadLiveOrDemoSnapshot(
-  staticData: StaticLineData,
+  staticData: NetworkStaticData,
 ): Promise<{ snapshot: LiveSnapshot; isDemo: boolean }> {
   try {
     const res = await fetch(`${LIVE_DATA_URL}?t=${Date.now()}`, { cache: "no-store" });
@@ -47,7 +47,7 @@ export async function loadLiveOrDemoSnapshot(
  * (including immediately on the first successful/fallback load).
  */
 export function pollLiveData(
-  staticData: StaticLineData,
+  staticData: NetworkStaticData,
   intervalMs: number,
   onUpdate: (snapshot: LiveSnapshot, isDemo: boolean) => void,
 ): () => void {

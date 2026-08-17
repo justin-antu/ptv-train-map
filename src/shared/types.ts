@@ -1,5 +1,5 @@
 /**
- * Shared data shapes for the Lilydale line map.
+ * Shared data shapes for the Metro Trains Melbourne network map.
  *
  * These types are used both by the Node scripts (which generate/fetch the JSON
  * files under `public/data/`) and by the browser app (which consumes them).
@@ -14,6 +14,15 @@ export interface LineStatic {
   color: string;
   /** GTFS route_id this data was extracted from (Metropolitan Train branch). */
   gtfsRouteId: string;
+  /**
+   * Ordered station ids (see StationStatic.id) tracing this line's canonical
+   * alignment end-to-end. References into the shared `stations` collection —
+   * shared stations (e.g. Flinders Street, Richmond) appear in multiple
+   * lines' `stationIds` arrays pointing at the same station entry.
+   */
+  stationIds: string[];
+  /** Ordered [lon, lat] coordinates tracing this line's track alignment. */
+  polyline: [number, number][];
 }
 
 export interface StationStatic {
@@ -23,17 +32,16 @@ export interface StationStatic {
   name: string;
   lat: number;
   lon: number;
-  /** 0-based order of the station along the line, starting at Flinders Street. */
-  sequence: number;
-  /** Raw GTFS stop_id this station was extracted from (informational only). */
+  /** Raw GTFS stop_id this station was extracted from (informational only; first line encountered "wins" if shared). */
   gtfsStopId: string;
+  /** Ids of every line (see LineStatic.id) that serves this station. */
+  lineIds: string[];
 }
 
-export interface StaticLineData {
-  line: LineStatic;
+export interface NetworkStaticData {
+  lines: LineStatic[];
+  /** Deduplicated across all lines — a station shared by multiple lines appears once. */
   stations: StationStatic[];
-  /** Ordered [lon, lat] coordinates tracing the line from Flinders Street to Lilydale. */
-  polyline: [number, number][];
   /** ISO timestamp of when this static file was generated from the GTFS feed. */
   generatedAt: string;
 }
@@ -51,6 +59,8 @@ export interface LiveRunStop {
 export interface LiveRun {
   /** PTV run_ref identifying this specific train service. */
   runRef: string;
+  /** Matches LineStatic.id — which line this run belongs to. */
+  lineId: string;
   /** PTV direction_id (0 or 1); not semantically meaningful on its own, just an opaque grouping key. */
   directionId: number;
   /** Human readable destination, e.g. "Lilydale" or "Flinders Street". */
@@ -64,10 +74,7 @@ export interface LiveSnapshot {
   generatedAtUtc: string;
   /** True only for the bundled fallback/demo snapshot; never true for real cron output. */
   isDemo?: boolean;
-  line: {
-    id: string;
-    /** Resolved PTV Timetable API route_id, or null if it could not be resolved this run. */
-    ptvRouteId: number | null;
-  };
+  /** Resolved PTV Timetable API route_id per line, or null if it couldn't be resolved this run. */
+  lines: { id: string; ptvRouteId: number | null }[];
   runs: LiveRun[];
 }

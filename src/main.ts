@@ -1,8 +1,9 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
-import { LINE_NAME, LIVE_POLL_INTERVAL_MS, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
+import { APP_TITLE, LIVE_POLL_INTERVAL_MS, NETWORK_SUBTITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
 import { loadStaticData, pollLiveData } from "./data/loadData";
-import { addLineAndStations, createMap } from "./map/map";
+import { addLineAndStations, createMap, setVisibleLines } from "./map/map";
+import { createLegend } from "./map/legend";
 import { startAnimationLoop } from "./trains/animate";
 import { buildInterpolationContext, computeTrainPositions } from "./trains/interpolate";
 import { TrainMarkerLayer } from "./trains/trainMarkers";
@@ -14,8 +15,8 @@ if (!app) throw new Error("#app root element missing");
 app.innerHTML = `
   <div id="map"></div>
   <div class="panel">
-    <h1><span class="line-swatch"></span>Where Is My Train?</h1>
-    <p class="subtitle">${LINE_NAME} line &middot; Metro Trains Melbourne</p>
+    <h1>${APP_TITLE}</h1>
+    <p class="subtitle">${NETWORK_SUBTITLE} &middot; all metro lines (no V/Line)</p>
     <div class="status-row">
       <span class="demo-badge" id="demo-badge">DEMO DATA</span>
       <span id="status-text">Loading…</span>
@@ -25,6 +26,7 @@ app.innerHTML = `
       times at each station (the PTV Timetable API doesn't expose live GPS for
       trains) &mdash; so treat this as "roughly where the train should be", not exact GPS.
     </p>
+    <div class="legend" id="legend"></div>
   </div>
 `;
 
@@ -32,15 +34,27 @@ async function main() {
   const mapContainer = document.getElementById("map");
   const statusText = document.getElementById("status-text");
   const demoBadge = document.getElementById("demo-badge");
-  if (!mapContainer || !statusText || !demoBadge) return;
+  const legendContainer = document.getElementById("legend");
+  if (!mapContainer || !statusText || !demoBadge || !legendContainer) return;
 
   const staticData = await loadStaticData();
   const map = createMap(mapContainer, staticData);
   addLineAndStations(map, staticData);
 
+  const lineColorById = new Map(staticData.lines.map((l) => [l.id, l.color]));
   const stationsById = new Map(staticData.stations.map((s) => [s.id, s]));
-  const interpolationContext = buildInterpolationContext(staticData.stations, staticData.polyline);
-  const trainMarkers = new TrainMarkerLayer(map);
+  const interpolationContext = buildInterpolationContext(staticData);
+  const trainMarkers = new TrainMarkerLayer(map, lineColorById);
+
+  let visibleLineIds = new Set(staticData.lines.map((l) => l.id));
+  createLegend(
+    legendContainer,
+    staticData.lines.map((l) => ({ id: l.id, name: l.name, color: l.color })),
+    (visible) => {
+      visibleLineIds = new Set(visible);
+      setVisibleLines(map, visibleLineIds);
+    },
+  );
 
   let currentRuns: LiveRun[] = [];
 
@@ -57,7 +71,8 @@ async function main() {
       staleAfterMs: RUN_STALE_AFTER_MS,
       showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS,
     });
-    trainMarkers.update(positions);
+    const visiblePositions = positions.filter((p) => visibleLineIds.has(p.lineId));
+    trainMarkers.update(visiblePositions);
   });
 }
 

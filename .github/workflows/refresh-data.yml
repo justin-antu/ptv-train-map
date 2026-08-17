@@ -1,13 +1,17 @@
-name: Refresh live Lilydale data
+name: Refresh live Metro Trains Melbourne data
 
-# Runs on a schedule to fetch live/predicted departures from the PTV Timetable
-# API and commit the resulting snapshot (public/data/lilydale-live.json) so the
-# statically-hosted GitHub Pages site can pick it up.
+# Runs on a schedule to fetch live/predicted departures — across all 16
+# in-scope Metro lines (see scripts/lib/lines.ts; V/Line excluded) — from the
+# PTV Timetable API and commit the resulting snapshot
+# (public/data/network-live.json) so the statically-hosted GitHub Pages site
+# can pick it up.
 #
 # Within a single run we loop the fetch a few times, ~80s apart, and commit
 # after each one. This gives noticeably fresher data than the 5-minute cron
 # cadence alone would (GitHub Actions schedules don't reliably fire more often
-# than every 5 minutes), without spamming the Actions scheduler.
+# than every 5 minutes), without spamming the Actions scheduler. Each fetch
+# covers ~300 (line, station) pairs but uses bounded concurrency (see
+# scripts/lib/concurrency.ts), so a full fetch takes well under a minute.
 
 on:
   schedule:
@@ -59,9 +63,9 @@ jobs:
           for i in $(seq 1 "${SUBFETCH_COUNT}"); do
             echo "--- Fetch attempt ${i}/${SUBFETCH_COUNT} ---"
             if npx tsx scripts/fetch-live-data.ts; then
-              if ! git diff --quiet -- public/data/lilydale-live.json; then
-                git add public/data/lilydale-live.json
-                git commit -m "chore(data): refresh live Lilydale departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+              if ! git diff --quiet -- public/data/network-live.json; then
+                git add public/data/network-live.json
+                git commit -m "chore(data): refresh live Metro Trains Melbourne departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
                 git pull --rebase --autostash
                 git push
               else

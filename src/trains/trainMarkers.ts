@@ -5,7 +5,10 @@ import type { TrainPosition } from "./interpolate";
 export class TrainMarkerLayer {
   private readonly markers = new Map<string, maplibregl.Marker>();
 
-  constructor(private readonly map: maplibregl.Map) {}
+  constructor(
+    private readonly map: maplibregl.Map,
+    private readonly lineColorById: Map<string, string>,
+  ) {}
 
   update(positions: TrainPosition[]): void {
     const seen = new Set<string>();
@@ -16,13 +19,16 @@ export class TrainMarkerLayer {
       if (!marker) {
         const el = document.createElement("div");
         el.className = "train-marker";
-        el.textContent = "🚆";
+        el.innerHTML = `<span class="train-marker-dot"></span><span class="train-marker-icon">🚆</span>`;
         marker = new maplibregl.Marker({ element: el, anchor: "center" });
         marker.setLngLat([pos.lon, pos.lat]);
         marker.addTo(this.map);
         this.markers.set(pos.runRef, marker);
       }
-      marker.getElement().title = `To ${pos.destinationName}`;
+      const el = marker.getElement();
+      el.title = `To ${pos.destinationName}`;
+      const dot = el.querySelector<HTMLElement>(".train-marker-dot");
+      if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
       marker.setLngLat([pos.lon, pos.lat]);
     }
 

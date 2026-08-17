@@ -1,42 +1,69 @@
-# Where Is My Train? 🚆 — Lilydale Line
+# Where Is My Train? 🚆 — Metro Trains Melbourne
 
-A fun, real-time(ish) map of Metro Trains Melbourne's **Lilydale line**, built as a
-fully static site (Vite + TypeScript + [MapLibre GL JS](https://maplibre.org/)) that
-can be hosted for free on GitHub Pages — no backend server required.
+A fun, real-time(ish) map of **every Metro Trains Melbourne metropolitan line**
+(V/Line regional trains are explicitly out of scope), built as a fully static
+site (Vite + TypeScript + [MapLibre GL JS](https://maplibre.org/)) that can be
+hosted for free on GitHub Pages — no backend server required.
 
-Trains are shown moving smoothly along the actual track alignment, interpolated
-between predicted departure times at each station.
+Trains are shown moving smoothly along their line's actual track alignment,
+interpolated between predicted departure times at each station, each line
+drawn in its own official PTV colour, with a legend panel to show/hide
+individual lines.
+
+## In-scope lines
+
+All 16 current Metro lines: **Alamein, Belgrave, Craigieburn, Cranbourne,
+Frankston, Glen Waverley, Hurstbridge, Lilydale, Mernda, Pakenham,
+Sandringham, Stony Point, Sunbury, Upfield, Werribee, Williamstown.**
+
+This list isn't hand-typed from memory — `scripts/lib/lines.ts` documents how
+it was verified against the live PTV Timetable API (`/v3/routes?route_types=0`)
+and cross-checked against the Victorian GTFS Schedule feed's Metropolitan
+Train branch. **V/Line is never queried or included** (it uses a different
+route_type in both data sources). See that file if PTV restructures the
+network in future and this list needs re-verifying.
 
 ## How it works
 
 ```
 ┌─────────────────────┐     ┌──────────────────────────┐     ┌────────────────────┐
 │ GitHub Actions cron  │────▶│ public/data/*.json        │────▶│ Static site (Pages) │
-│ (refresh-data.yml)   │     │  - lilydale-static.json   │     │  Vite + MapLibre     │
-│ calls PTV Timetable  │     │    (stations + polyline,  │     │  interpolates train  │
-│ API, writes + commits│     │    committed, rarely      │     │  positions client-   │
+│ (refresh-data.yml)   │     │  - network-static.json    │     │  Vite + MapLibre     │
+│ calls PTV Timetable  │     │    (16 lines' stations +  │     │  interpolates every  │
+│ API for all 16 lines,│     │    polylines + colours,   │     │  active train's      │
+│ writes + commits     │     │    committed, rarely      │     │  position client-    │
 │ a live snapshot      │     │    regenerated)           │     │  side every frame    │
-│                      │     │  - lilydale-live.json     │     │                      │
+│                      │     │  - network-live.json      │     │                      │
 │                      │     │    (bot-committed every   │     │                      │
 │                      │     │    few minutes)           │     │                      │
 └─────────────────────┘     └──────────────────────────┘     └────────────────────┘
 ```
 
-1. **Static line data** (`public/data/lilydale-static.json`) — the 23 Lilydale
-   stations (name, lat/lon, order) and the route polyline (761 points tracing the
-   actual track), extracted once from the official Victorian **GTFS Schedule**
-   feed via `scripts/generate-static-data.ts`. This rarely changes, so it's
-   committed to the repo instead of being fetched at runtime.
-2. **Live data** (`public/data/lilydale-live.json`) — predicted departure times
-   per station, fetched from the **PTV Timetable API v3** by
-   `scripts/fetch-live-data.ts`, which is run on a schedule by
-   [`.github/workflows/refresh-data.yml`](.github/workflows/refresh-data.yml) and
-   committed straight to `main`. This file does **not** exist until the first
-   scheduled run (or a real key is configured) — see [Limitations](#limitations).
-3. **The frontend** (`src/`) loads both files, draws the line + station markers in
-   the official PTV Lilydale colour, and animates a train icon per active service
-   by interpolating its position along the track polyline between the two
-   stations bracketing the current time, recomputed every animation frame and
+1. **Static network data** (`public/data/network-static.json`) — every
+   in-scope line's stations (name, lat/lon, order) and route polyline, plus
+   its official PTV colour, extracted once from the official Victorian
+   **GTFS Schedule** feed via `scripts/generate-static-data.ts`. Shared
+   stations (e.g. Flinders Street, Richmond, Caulfield) are deduplicated into
+   a single entry referenced by every line that serves them. This rarely
+   changes, so it's committed to the repo instead of being fetched/processed
+   at runtime (processing all 16 lines from the raw ~250MB GTFS feed still
+   only takes a few seconds, since every GTFS file is streamed exactly once
+   regardless of line count).
+2. **Live data** (`public/data/network-live.json`) — predicted departure
+   times per station across all 16 lines (~300 line/station pairs), fetched
+   from the **PTV Timetable API v3** by `scripts/fetch-live-data.ts` (using
+   bounded-concurrency requests — see `scripts/lib/concurrency.ts` — so a full
+   network fetch takes well under a minute), run on a schedule by
+   [`.github/workflows/refresh-data.yml`](.github/workflows/refresh-data.yml)
+   and committed straight to `main`. This file does **not** exist until the
+   first scheduled run (or a real key is configured) — see
+   [Limitations](#limitations).
+3. **The frontend** (`src/`) loads both files, draws every line + deduplicated
+   station markers in each line's official PTV colour, renders a legend panel
+   to show/hide individual lines, and animates a train icon per active
+   service by interpolating its position along its own line's track polyline
+   between the two stations bracketing the current time — recomputed every
+   animation frame (a single shared loop across all lines/trains) and
    re-synced whenever a fresh live snapshot is polled (every 30s).
 4. **Deployment** — [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
    builds the Vite app and publishes it to GitHub Pages on every push to `main`
@@ -49,26 +76,38 @@ between predicted departure times at each station.
   positions (that's a GTFS-Realtime-only capability). So a train's position on
   the map is an **estimate**, linearly interpolated in time between its
   predicted departure from one station and its predicted departure from the
-  next, then geographically snapped onto the track polyline between those two
-  stations. It'll be roughly right, but won't reflect real slow-downs, stops, or
-  delays that happen *between* stations.
+  next, then geographically snapped onto its line's track polyline between
+  those two stations. It'll be roughly right, but won't reflect real
+  slow-downs, stops, or delays that happen *between* stations.
 - **Assumes each run stops at every station in our list.** A handful of
-  Lilydale services occasionally run limited-stops/express — for those, the
-  train may appear to "jump" across a skipped station rather than gliding
-  through it, since we don't have a predicted time for the skipped stop.
-- **The Lilydale line is modelled as the direct alignment only** (Flinders
-  Street ↔ Richmond ↔ … ↔ Lilydale, 23 stations). Some real Lilydale services
-  run via the underground City Loop (Southern Cross / Flagstaff / Melbourne
-  Central / Parliament) instead — this matches how PTV's own network map
-  represents the line (the City Loop is shared infrastructure used by many
-  lines, not Lilydale-specific), but it means a loop-routed train's on-map
-  travel time between Flinders Street and Richmond will be a rough
-  approximation during the loop portion of its trip.
+  services occasionally run limited-stops/express — for those, the train may
+  appear to "jump" across a skipped station rather than gliding through it,
+  since we don't have a predicted time for the skipped stop.
+- **Each line is modelled as a single canonical direct alignment.** Some real
+  services run via the underground City Loop (Southern Cross / Flagstaff /
+  Melbourne Central / Parliament) instead of a line's direct alignment — this
+  matches how PTV's own network map represents each line (the loop is shared
+  infrastructure used by many lines, not specific to any one of them), but it
+  means a loop-routed train's on-map travel time through the loop portion of
+  its trip will be a rough approximation. The Sunbury/Cranbourne/Pakenham
+  lines are modelled via the newer Metro Tunnel corridor instead, since that's
+  their real primary alignment post-tunnel (no separate "direct" alternative
+  exists for them any more).
+- **Shared corridors are drawn as overlapping lines, not merged.** Where
+  multiple lines run the same physical track (the City Loop approaches, the
+  Metro Tunnel trunk shared by Sunbury/Cranbourne/Pakenham, etc.), each line's
+  colour is drawn as its own overlapping polyline rather than one
+  cartographically "merged" line — a deliberate v1 simplification for a fun
+  infographic-style map, not aiming for pixel-perfect PTV map styling.
+- **Station identity is by name.** Stations shared by multiple lines are
+  deduplicated by (slugified) name into a single marker; the specific lat/lon
+  used is whichever line's GTFS data was processed first, so it may be off by
+  a platform's width in principle (not noticeable at map scale).
 - **No live data until the first successful cron run** (needs the two repo
   secrets configured — see below). Until then, and any time the live fetch
-  fails, the site clearly labels itself **"DEMO DATA"** and shows a handful of
-  synthetic trains looping up and down the line, so it never shows a blank or
-  broken page.
+  fails, the site clearly labels itself **"DEMO DATA"** and shows a couple of
+  synthetic trains per line looping up and down each line, so it never shows a
+  blank or broken page.
 - **Upgrading to real GPS later**: if a GTFS-Realtime Vehicle Positions feed
   key becomes available for Melbourne trains in future, `scripts/fetch-live-data.ts`
   and `src/trains/interpolate.ts` are the two places that would need to change
@@ -78,24 +117,28 @@ between predicted departure times at each station.
 
 ```
 ├── public/data/
-│   ├── lilydale-static.json   Committed: stations + route polyline (from GTFS)
-│   └── lilydale-live.json     Bot-committed: live departure snapshot (gitignored locally, created by CI)
+│   ├── network-static.json    Committed: all 16 lines' stations + polylines + colours (from GTFS)
+│   └── network-live.json      Bot-committed: live departure snapshot for all lines (created by CI)
 ├── scripts/
 │   ├── lib/
 │   │   ├── csv.ts             Minimal streaming CSV parser (for the large GTFS files)
+│   │   ├── lines.ts           Authoritative in-scope line list (verified against live API + GTFS)
+│   │   ├── concurrency.ts     Bounded-concurrency helper used when fetching ~300 departures per run
 │   │   ├── ptvClient.ts       PTV Timetable API v3 HMAC-SHA1 signing + typed fetch helpers
 │   │   └── ptvClient.test.ts  Regression test for the signing algorithm (`npx tsx scripts/lib/ptvClient.test.ts`)
-│   ├── generate-static-data.ts  Regenerates lilydale-static.json from the GTFS feed (rarely needed)
-│   └── fetch-live-data.ts       Fetches live departures, writes lilydale-live.json (run by CI on a schedule)
+│   ├── generate-static-data.ts  Regenerates network-static.json from the GTFS feed (rarely needed)
+│   └── fetch-live-data.ts       Fetches live departures for all lines, writes network-live.json (run by CI on a schedule)
 ├── src/
-│   ├── config.ts               Non-secret app config (line colour, data URLs, poll intervals)
+│   ├── config.ts               Non-secret app config (data URLs, poll intervals)
 │   ├── shared/types.ts         Shared TS types for the static/live JSON shapes
-│   ├── data/                   Loading live/static data + client-side demo data generator
-│   ├── map/map.ts               MapLibre setup: basemap, route line, station markers/labels
-│   ├── trains/                  Position interpolation (along the polyline), marker rendering, animation loop
+│   ├── data/                   Loading live/static data + client-side demo data generator (all lines)
+│   ├── map/
+│   │   ├── map.ts              MapLibre setup: basemap, per-line route colours, deduplicated station markers
+│   │   └── legend.ts           Show/hide-per-line legend panel
+│   ├── trains/                 Per-line position interpolation (along each line's polyline), marker rendering, shared animation loop
 │   └── main.ts                 App entry point
 └── .github/workflows/
-    ├── refresh-data.yml        Scheduled: fetches live data, commits public/data/lilydale-live.json
+    ├── refresh-data.yml        Scheduled: fetches live data for all lines, commits public/data/network-live.json
     └── deploy.yml              Builds with Vite and deploys to GitHub Pages on push to main
 ```
 
@@ -108,14 +151,14 @@ npm run dev
 
 This starts Vite's dev server (prints a local URL, typically http://localhost:5173).
 Without live data configured, the map will show clearly-labeled **demo/sample
-trains** — that's expected and by design.
+trains** (a couple per line) — that's expected and by design.
 
 To test against the real PTV API locally:
 
 ```bash
 cp .env.example .env
 # edit .env with your real PTV_DEV_ID and PTV_API_KEY
-npm run fetch:live-data   # writes public/data/lilydale-live.json
+npm run fetch:live-data   # writes public/data/network-live.json (all 16 lines)
 npm run dev
 ```
 
@@ -127,7 +170,7 @@ Other useful scripts:
 ```bash
 npm run build            # type-checks and builds the production site into dist/
 npm run typecheck        # tsc --noEmit
-npm run generate:static-data   # regenerate lilydale-static.json from a local GTFS extract (see script header comment)
+npm run generate:static-data   # regenerate network-static.json from a local GTFS extract (see script header comment)
 ```
 
 ## GitHub repo secrets (required for live data)
@@ -159,11 +202,11 @@ fork this repo under a different name, update that base path to match.
 
 ## Data & attribution
 
-- Station and route data: [Victorian GTFS Schedule](https://opendata.transport.vic.gov.au/dataset/gtfs-schedule)
-  (Department of Transport and Planning, CC BY 4.0).
+- Station, route and colour data: [Victorian GTFS Schedule](https://opendata.transport.vic.gov.au/dataset/gtfs-schedule)
+  (Department of Transport and Planning, CC BY 4.0) — each line's official PTV
+  colour comes straight from its GTFS `route_color` field.
 - Live departure predictions: [PTV Timetable API v3](https://www.vic.gov.au/public-transport-timetable-api).
 - Basemap tiles: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
-- Line colour (`#152C6B`, the Burnley group navy blue): PTV's published Metro
-  Service Guidelines colour palette, cross-checked against the Victorian GTFS
-  feed's own `route_color` field for the Lilydale route and against the
-  colour tables used by several community PTV visualisation projects.
+- In-scope line list: verified against the live PTV Timetable API and the
+  Victorian GTFS feed on 2026-08-17 — see `scripts/lib/lines.ts` for the full
+  verification method and how to re-check it if PTV restructures the network.

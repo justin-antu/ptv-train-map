@@ -1,27 +1,39 @@
 /**
- * Fetches live/predicted Lilydale line departures from the PTV Timetable API
- * and writes a compact snapshot to public/data/lilydale-live.json.
+ * Fetches live/predicted departures from the PTV Timetable API for every
+ * in-scope Metro Trains Melbourne line (see scripts/lib/lines.ts) and writes
+ * a compact combined snapshot to public/data/network-live.json.
  *
  * Run by the `.github/workflows/refresh-data.yml` scheduled workflow (which
- * loops this a few times per run, a minute or so apart, and commits the result
- * each time — see that workflow file for the freshness strategy). Can also be
- * run locally for testing against a real PTV Timetable API key:
+ * loops this a few times per run, a bit apart, and commits the result each
+ * time — see that workflow file for the freshness strategy). Can also be run
+ * locally for testing against a real PTV Timetable API key:
  *
  *   PTV_DEV_ID=... PTV_API_KEY=... npm run fetch:live-data
  *
- * IMPORTANT: this script needs a real PTV_DEV_ID / PTV_API_KEY to do anything
- * useful. The exact request/response shapes used here (route_type=0 for train,
- * the /v3/routes, /v3/stops/route/{id}/route_type/{type} and
+ * The exact request/response shapes used here (route_type=0 for train, the
+ * /v3/routes, /v3/stops/route/{id}/route_type/{type} and
  * /v3/departures/route_type/{type}/stop/{id}/route/{id} endpoints, and field
  * names like estimated_departure_utc) were verified against the live Swagger
- * docs (https://timetableapi.ptv.vic.gov.au/swagger/ui/index) and the
- * unofficial reference docs (https://stevage.github.io/PTV-API-doc/) while
- * building this — but since this environment doesn't have a real API key, full
- * end-to-end correctness (e.g. exact behaviour under real quota/rate limits)
- * can only be confirmed once real secrets are in place.
+ * docs and confirmed end-to-end against the real API with real credentials.
+ *
+ * Scale note: with 16 lines and ~280 (line, station) pairs across the whole
+ * network, fetching departures one-by-one would take a while — requests are
+ * therefore issued with bounded concurrency (see scripts/lib/concurrency.ts)
+ * rather than either fully sequential or fully unbounded-parallel.
  */
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+// Load .env for local runs (e.g. `npm run fetch:live-data`). In CI, the
+// refresh-data workflow sets PTV_DEV_ID/PTV_API_KEY directly as real env
+// vars via GitHub secrets, so there's no .env file there — skip silently.
+const dotEnvPath = path.resolve(".env");
+if (existsSync(dotEnvPath)) {
+  process.loadEnvFile(dotEnvPath);
+}
+
+import { mapWithConcurrency } from "./lib/concurrency.ts";
 import {
   getDeparturesForStop,
   getRoutes,
@@ -29,11 +41,12 @@ import {
   ROUTE_TYPE_TRAIN,
   type PtvCredentials,
 } from "./lib/ptvClient.ts";
-import type { LiveRun, LiveRunStop, LiveSnapshot, StaticLineData } from "../src/shared/types.ts";
+import type { LiveRun, LiveRunStop, LiveSnapshot, NetworkStaticData, StationStatic } from "../src/shared/types.ts";
 
-const STATIC_DATA_PATH = path.resolve("public/data/lilydale-static.json");
-const OUTPUT_PATH = path.resolve("public/data/lilydale-live.json");
+const STATIC_DATA_PATH = path.resolve("public/data/network-static.json");
+const OUTPUT_PATH = path.resolve("public/data/network-live.json");
 const MAX_RESULTS_PER_STOP = Number(process.env.MAX_RESULTS_PER_STOP ?? 6);
+const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY ?? 8);
 
 function normalizeStationName(name: string): string {
   return name
@@ -54,20 +67,26 @@ function readCredentials(): PtvCredentials {
   return { devId, apiKey };
 }
 
-async function resolveLilydaleRouteId(credentials: PtvCredentials): Promise<number> {
+/** One /v3/routes call resolves every in-scope line's PTV route_id at once (matched by exact name). */
+async function resolveRouteIds(lineNames: string[], credentials: PtvCredentials): Promise<Map<string, number>> {
   const routes = await getRoutes(ROUTE_TYPE_TRAIN, credentials);
-  const match = routes.find((r) => r.route_name.trim().toLowerCase() === "lilydale");
-  if (!match) {
-    throw new Error(
-      `Could not find a "Lilydale" route among ${routes.length} train routes returned by /v3/routes.`,
-    );
+  const byName = new Map(routes.map((r) => [r.route_name.trim().toLowerCase(), r.route_id]));
+
+  const resolved = new Map<string, number>();
+  for (const name of lineNames) {
+    const routeId = byName.get(name.trim().toLowerCase());
+    if (routeId === undefined) {
+      console.warn(`Warning: could not resolve a PTV route_id for line "${name}" among ${routes.length} train routes returned by /v3/routes.`);
+      continue;
+    }
+    resolved.set(name, routeId);
   }
-  return match.route_id;
+  return resolved;
 }
 
 async function resolveStationStopIds(
   routeId: number,
-  stations: StaticLineData["stations"],
+  stations: StationStatic[],
   credentials: PtvCredentials,
 ): Promise<Map<string, number>> {
   const ptvStops = await getStopsForRoute(routeId, ROUTE_TYPE_TRAIN, credentials);
@@ -76,33 +95,70 @@ async function resolveStationStopIds(
   const resolved = new Map<string, number>();
   for (const station of stations) {
     const stopId = byNormalizedName.get(normalizeStationName(station.name));
-    if (stopId === undefined) {
-      console.warn(`Warning: could not resolve a PTV stop_id for station "${station.name}" (${station.id})`);
-      continue;
-    }
-    resolved.set(station.id, stopId);
+    if (stopId !== undefined) resolved.set(station.id, stopId);
   }
   return resolved;
 }
 
+interface DepartureJob {
+  lineId: string;
+  lineName: string;
+  routeId: number;
+  stationId: string;
+  stopId: number;
+}
+
 async function fetchSnapshot(): Promise<LiveSnapshot> {
   const credentials = readCredentials();
-  const staticData: StaticLineData = JSON.parse(await readFile(STATIC_DATA_PATH, "utf8"));
+  const staticData: NetworkStaticData = JSON.parse(await readFile(STATIC_DATA_PATH, "utf8"));
+  const stationsById = new Map(staticData.stations.map((s) => [s.id, s]));
 
-  const routeId = await resolveLilydaleRouteId(credentials);
-  const stopIdsByStation = await resolveStationStopIds(routeId, staticData.stations, credentials);
+  const routeIdByLineName = await resolveRouteIds(
+    staticData.lines.map((l) => l.name),
+    credentials,
+  );
+
+  const lineResults: LiveSnapshot["lines"] = [];
+  const jobs: DepartureJob[] = [];
+
+  // Resolve each line's PTV stop_ids concurrently (one /v3/stops/route/... call per line).
+  await mapWithConcurrency(staticData.lines, FETCH_CONCURRENCY, async (line) => {
+    const routeId = routeIdByLineName.get(line.name);
+    lineResults.push({ id: line.id, ptvRouteId: routeId ?? null });
+    if (routeId === undefined) return;
+
+    const lineStations = line.stationIds
+      .map((id) => stationsById.get(id))
+      .filter((s): s is StationStatic => s !== undefined);
+
+    let stopIdByStation: Map<string, number>;
+    try {
+      stopIdByStation = await resolveStationStopIds(routeId, lineStations, credentials);
+    } catch (err) {
+      console.warn(`Warning: failed to resolve stops for ${line.name} line (route_id ${routeId}):`, err);
+      return;
+    }
+
+    for (const station of lineStations) {
+      const stopId = stopIdByStation.get(station.id);
+      if (stopId === undefined) {
+        console.warn(`Warning: could not resolve a PTV stop_id for station "${station.name}" (${station.id}) on the ${line.name} line`);
+        continue;
+      }
+      jobs.push({ lineId: line.id, lineName: line.name, routeId, stationId: station.id, stopId });
+    }
+  });
+
+  console.log(`Fetching departures for ${jobs.length} (line, station) pairs across ${staticData.lines.length} lines (concurrency ${FETCH_CONCURRENCY})...`);
 
   const runs = new Map<string, LiveRun>();
 
-  for (const station of staticData.stations) {
-    const stopId = stopIdsByStation.get(station.id);
-    if (stopId === undefined) continue;
-
+  await mapWithConcurrency(jobs, FETCH_CONCURRENCY, async (job) => {
     try {
       const { departures, runs: runSummaries } = await getDeparturesForStop(
         ROUTE_TYPE_TRAIN,
-        stopId,
-        routeId,
+        job.stopId,
+        job.routeId,
         MAX_RESULTS_PER_STOP,
         credentials,
       );
@@ -112,17 +168,19 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
         if (!timeUtc) continue;
 
         const stop: LiveRunStop = {
-          stationId: station.id,
+          stationId: job.stationId,
           timeUtc,
           isEstimate: Boolean(departure.estimated_departure_utc),
         };
 
-        const existing = runs.get(departure.run_ref);
+        const key = `${job.lineId}:${departure.run_ref}`;
+        const existing = runs.get(key);
         if (existing) {
           existing.stops.push(stop);
         } else {
-          runs.set(departure.run_ref, {
+          runs.set(key, {
             runRef: departure.run_ref,
+            lineId: job.lineId,
             directionId: departure.direction_id,
             destinationName: runSummaries[departure.run_ref]?.destination_name ?? "Unknown",
             stops: [stop],
@@ -130,9 +188,9 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
         }
       }
     } catch (err) {
-      console.warn(`Warning: failed to fetch departures for ${station.name} (stop_id ${stopId}):`, err);
+      console.warn(`Warning: failed to fetch departures for ${job.stationId} on ${job.lineName} line (stop_id ${job.stopId}):`, err);
     }
-  }
+  });
 
   for (const run of runs.values()) {
     run.stops.sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc));
@@ -140,7 +198,7 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
 
   return {
     generatedAtUtc: new Date().toISOString(),
-    line: { id: staticData.line.id, ptvRouteId: routeId },
+    lines: lineResults,
     runs: [...runs.values()],
   };
 }
@@ -148,9 +206,12 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
 async function main() {
   const snapshot = await fetchSnapshot();
   await writeFile(OUTPUT_PATH, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
-  console.log(
-    `Wrote ${snapshot.runs.length} run(s) to ${OUTPUT_PATH} (generated at ${snapshot.generatedAtUtc})`,
-  );
+  const perLineCounts = new Map<string, number>();
+  for (const run of snapshot.runs) perLineCounts.set(run.lineId, (perLineCounts.get(run.lineId) ?? 0) + 1);
+  console.log(`Wrote ${snapshot.runs.length} run(s) across ${perLineCounts.size} lines to ${OUTPUT_PATH} (generated at ${snapshot.generatedAtUtc})`);
+  for (const [lineId, count] of [...perLineCounts.entries()].sort()) {
+    console.log(`  ${lineId}: ${count} run(s)`);
+  }
 }
 
 main().catch((err: unknown) => {
