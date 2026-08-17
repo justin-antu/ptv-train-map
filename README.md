@@ -10,6 +10,37 @@ interpolated between predicted departure times at each station, each line
 drawn in its own official PTV colour, with a legend panel to show/hide
 individual lines.
 
+## Features
+
+- **Live map** of all 16 lines, each in its own official PTV colour, with
+  trains animated between stations and a collapsible legend to show/hide
+  individual lines (your selection is remembered across visits).
+- **Delay & disruption visibility** — trains running noticeably late (≥3 min
+  versus their scheduled time) get a pulsing amber ring on the map and a
+  "+N min" badge on their info card; any line with an active PTV service
+  alert shows a small warning indicator next to its legend entry that expands
+  to the alert text when clicked.
+- **Station & train info cards** — click any station for its next few
+  departures across every line that serves it, or click a train for its
+  line, destination, and next stop. Only one card is ever open at a time.
+- **Station search** — type a station name in the search box to fly the map
+  straight to it (re-enabling its line(s) if they were hidden) and open its
+  info card.
+- **"My station" dashboard** — star any station from its info card to pin a
+  small live departure board for it (persisted in `localStorage`), with an
+  opt-in toggle for browser notifications when your next train is ~2 minutes
+  away. Notifications are never requested automatically — only when you
+  explicitly turn the toggle on.
+- **Trip planner** — pick a "from" and "to" station to see the next few
+  direct departures; if the two stations don't share a line, it falls back to
+  a simple one-interchange heuristic (via Flinders Street where possible) or
+  tells you plainly that no route was found in the current data. This is a
+  deliberately simple v1 — see [Limitations](#limitations) for what it
+  doesn't do.
+- **Installable PWA** — add it to your phone's home screen for an app-like,
+  full-screen experience (no offline support — it's inherently a live-data
+  app).
+
 ## In-scope lines
 
 All 16 current Metro lines: **Alamein, Belgrave, Craigieburn, Cranbourne,
@@ -50,10 +81,13 @@ network in future and this list needs re-verifying.
    only takes a few seconds, since every GTFS file is streamed exactly once
    regardless of line count).
 2. **Live data** (`public/data/network-live.json`) — predicted departure
-   times per station across all 16 lines (~300 line/station pairs), fetched
-   from the **PTV Timetable API v3** by `scripts/fetch-live-data.ts` (using
-   bounded-concurrency requests — see `scripts/lib/concurrency.ts` — so a full
-   network fetch takes well under a minute), run on a schedule by
+   times (scheduled *and* estimated, so per-train delay can be computed) per
+   station across all 16 lines (~300 line/station pairs), plus current
+   service alerts per line, fetched from the **PTV Timetable API v3**
+   (`/v3/departures` and `/v3/disruptions/route/{route_id}`) by
+   `scripts/fetch-live-data.ts` (using bounded-concurrency requests — see
+   `scripts/lib/concurrency.ts` — so a full network fetch takes well under a
+   minute), run on a schedule by
    [`.github/workflows/refresh-data.yml`](.github/workflows/refresh-data.yml)
    and committed straight to `main`. This file does **not** exist until the
    first scheduled run (or a real key is configured) — see
@@ -112,33 +146,59 @@ network in future and this list needs re-verifying.
   key becomes available for Melbourne trains in future, `scripts/fetch-live-data.ts`
   and `src/trains/interpolate.ts` are the two places that would need to change
   to consume real positions instead of interpolating between predicted times.
+- **Delay figures come from the same predicted times, not GPS.** "+N min" is
+  the gap between a stop's originally-scheduled time and PTV's current
+  predicted time for it — it's only as accurate/timely as PTV's own
+  prediction, same caveat as train positions above.
+- **Trip planner is a simple v1, not full journey planning.** It only tries a
+  direct (same-line) trip, then a single interchange (preferring Flinders
+  Street, else whichever station covers the most lines) — never two or more
+  changes. It also only ever looks at each station's already-fetched window
+  of upcoming departures (see `MAX_RESULTS_PER_STOP` in
+  `scripts/fetch-live-data.ts`), so during very low-frequency periods (e.g.
+  the middle of the night, when some lines run no trains at all) it can
+  genuinely find no viable connection even where one exists at a busier time
+  — it reports "no route found" honestly in that case rather than guessing.
+- **Disruption alerts are per-line, not per-stop.** A line-level PTV service
+  alert doesn't necessarily affect every station on that line equally, but
+  it's surfaced as a single legend indicator for the whole line for
+  simplicity.
 
 ## Project structure
 
 ```
-├── public/data/
-│   ├── network-static.json    Committed: all 16 lines' stations + polylines + colours (from GTFS)
-│   └── network-live.json      Bot-committed: live departure snapshot for all lines (created by CI)
+├── public/
+│   ├── manifest.webmanifest    PWA manifest (name, theme colour, icons)
+│   ├── icons/                  App/favicon icons referenced by index.html + the manifest
+│   └── data/
+│       ├── network-static.json    Committed: all 16 lines' stations + polylines + colours (from GTFS)
+│       └── network-live.json      Bot-committed: live departures + per-line disruptions (created by CI)
 ├── scripts/
 │   ├── lib/
 │   │   ├── csv.ts             Minimal streaming CSV parser (for the large GTFS files)
 │   │   ├── lines.ts           Authoritative in-scope line list (verified against live API + GTFS)
 │   │   ├── concurrency.ts     Bounded-concurrency helper used when fetching ~300 departures per run
-│   │   ├── ptvClient.ts       PTV Timetable API v3 HMAC-SHA1 signing + typed fetch helpers
+│   │   ├── ptvClient.ts       PTV Timetable API v3 HMAC-SHA1 signing + typed fetch helpers (departures + disruptions)
 │   │   └── ptvClient.test.ts  Regression test for the signing algorithm (`npx tsx scripts/lib/ptvClient.test.ts`)
 │   ├── generate-static-data.ts  Regenerates network-static.json from the GTFS feed (rarely needed)
-│   └── fetch-live-data.ts       Fetches live departures for all lines, writes network-live.json (run by CI on a schedule)
+│   └── fetch-live-data.ts       Fetches live departures + disruptions for all lines, writes network-live.json (run by CI on a schedule)
 ├── src/
 │   ├── config.ts               Non-secret app config (data URLs, poll intervals)
 │   ├── shared/types.ts         Shared TS types for the static/live JSON shapes
-│   ├── data/                   Loading live/static data + client-side sample-data generator (all lines)
+│   ├── data/
+│   │   ├── departures.ts       Shared "upcoming departures at a station" + ETA-formatting helpers
+│   │   └── tripPlanner.ts      Direct + one-interchange trip-planning logic
 │   ├── map/
 │   │   ├── map.ts              MapLibre setup: basemap, per-line route colours, deduplicated station markers
-│   │   └── legend.ts           Show/hide-per-line legend panel
-│   ├── trains/                 Per-line position interpolation (along each line's polyline), marker rendering, shared animation loop
+│   │   ├── legend.ts           Collapsible show/hide-per-line legend panel + disruption indicators
+│   │   ├── infoCard.ts         Station/train click info cards (single-card-at-a-time)
+│   │   ├── favourite.ts        "My station" departure board + opt-in notifications
+│   │   ├── stationAutocomplete.ts  Reusable station search/autocomplete input (search box + trip planner)
+│   │   └── tripPlannerPanel.ts     Trip planner UI
+│   ├── trains/                 Per-line position + delay interpolation (along each line's polyline), marker rendering, shared animation loop
 │   └── main.ts                 App entry point
 └── .github/workflows/
-    ├── refresh-data.yml        Scheduled: fetches live data for all lines, commits public/data/network-live.json
+    ├── refresh-data.yml        Scheduled: fetches live data + disruptions for all lines, commits public/data/network-live.json
     └── deploy.yml              Builds with Vite and deploys to GitHub Pages on push to main
 ```
 
