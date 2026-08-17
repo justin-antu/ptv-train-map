@@ -26,17 +26,17 @@ network in future and this list needs re-verifying.
 ## How it works
 
 ```
-┌─────────────────────┐     ┌──────────────────────────┐     ┌────────────────────┐
-│ GitHub Actions cron  │────▶│ public/data/*.json        │────▶│ Static site (Pages) │
-│ (refresh-data.yml)   │     │  - network-static.json    │     │  Vite + MapLibre     │
-│ calls PTV Timetable  │     │    (16 lines' stations +  │     │  interpolates every  │
-│ API for all 16 lines,│     │    polylines + colours,   │     │  active train's      │
-│ writes + commits     │     │    committed, rarely      │     │  position client-    │
-│ a live snapshot      │     │    regenerated)           │     │  side every frame    │
-│                      │     │  - network-live.json      │     │                      │
-│                      │     │    (bot-committed every   │     │                      │
-│                      │     │    few minutes)           │     │                      │
-└─────────────────────┘     └──────────────────────────┘     └────────────────────┘
+┌──────────────────────┐      ┌──────────────────────────┐     ┌──────────────────────┐      
+│ GitHub Actions cron  │────▶  public/data/*.json         ────▶  Static site (Pages) │
+│ (refresh-data.yml)   │      │  - network-static.json   │     │  Vite + MapLibre     │
+│ calls PTV Timetable  │      │    (16 lines' stations + │     │  interpolates every  │
+│ API for all 16 lines,│      │    polylines + colours,  │     │  active train's      │
+│ writes + commits     │      │    committed, rarely     │     │  position client-    │
+│ a live snapshot      │      │    regenerated)          │     │  side every frame    │
+│                      │      │  - network-live.json     │     │                      │
+│                      │      │    (bot-committed every  │     │                      │
+│                      │      │    few minutes)          │     │                      │
+└──────────────────────┘      └──────────────────────────┘     └──────────────────────┘
 ```
 
 1. **Static network data** (`public/data/network-static.json`) — every
@@ -196,7 +196,7 @@ this, so it isn't automatable from a script). Once set, every push to `main`
 (including automated data-refresh commits, which also count as pushes) triggers
 a fresh build + deploy.
 
-The Vite base path is hard-coded to `/where-is-my-train/` for production builds
+The Vite base path is hard-coded to `/ptv-train-map/` for production builds
 (see `vite.config.ts`) to match GitHub Pages' project-site URL structure. If you
 fork this repo under a different name, update that base path to match.
 
