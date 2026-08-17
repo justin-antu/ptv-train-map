@@ -37,8 +37,8 @@ export function AlertsCard({ disruptionsByLine, lineNameById, lineColorById }: A
   if (alerts.length === 0) return null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-amber-300/50 bg-amber-50/90 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40">
-      <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5 text-xs font-bold tracking-wide text-amber-800 uppercase dark:text-amber-300">
+    <div className="relative overflow-hidden rounded-xl border border-warning-border/50 bg-warning-surface/90 shadow-sm">
+      <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5 text-xs font-bold tracking-wide text-warning uppercase">
         <AlertTriangle className="size-3.5 shrink-0" />
         <span>
           Service alerts ({alerts.length})
@@ -47,10 +47,10 @@ export function AlertsCard({ disruptionsByLine, lineNameById, lineColorById }: A
       <ScrollArea className="max-h-56">
         <ul className="space-y-2 px-4 pb-3">
           {alerts.map(({ disruption, lineIds }) => (
-            <li key={disruption.id} className="text-[11.5px] leading-snug text-amber-800 dark:text-amber-300">
+            <li key={disruption.id} className="text-[11.5px] leading-snug text-warning-foreground">
               <div className="mb-1 flex flex-wrap items-center gap-1">
                 {lineIds.map((lineId) => (
-                  <span key={lineId} className="flex items-center gap-1 rounded-full bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-semibold dark:bg-amber-900/40">
+                  <span key={lineId} className="flex items-center gap-1 rounded-full bg-warning-muted/80 px-1.5 py-0.5 text-[10px] font-semibold">
                     <span className="size-2 shrink-0 rounded-[2px]" style={{ background: lineColorById.get(lineId) ?? "#999" }} />
                     {lineNameById.get(lineId) ?? lineId}
                   </span>

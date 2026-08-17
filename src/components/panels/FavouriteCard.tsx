@@ -41,7 +41,7 @@ export function FavouriteCard({
   const stops = upcomingStopsForStation(station, runs, now).slice(0, MAX_ROWS);
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-400 bg-card/80 p-4 shadow-sm backdrop-blur-sm">
+    <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-400 bg-card/80 p-4 shadow-sm backdrop-blur-sm dark:border-l-foreground/60">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[10.5px] font-bold tracking-wide text-muted-foreground uppercase">My station</div>

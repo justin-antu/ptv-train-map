@@ -57,7 +57,7 @@ export function SelectedInfoCard({
     const starred = favourite.isFavourite(station.id);
 
     return (
-      <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-500 bg-card/80 p-4 shadow-sm backdrop-blur-sm">
+      <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-500 bg-card/80 p-4 shadow-sm backdrop-blur-sm dark:border-l-foreground/60">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1 truncate text-base font-bold">{station.name}</div>
           <div className="flex shrink-0 items-center gap-0.5">

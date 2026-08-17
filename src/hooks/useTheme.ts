@@ -5,7 +5,7 @@ export type Theme = "light" | "dark";
 const THEME_STORAGE_KEY = "wimt:theme";
 const THEME_COLOR_BY_THEME: Record<Theme, string> = {
   light: "#152c6b",
-  dark: "#0b0f1a",
+  dark: "#000000",
 };
 
 function loadInitialTheme(): Theme {

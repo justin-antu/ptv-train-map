@@ -40,6 +40,13 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+          surface: "hsl(var(--warning-surface))",
+          muted: "hsl(var(--warning-muted))",
+          border: "hsl(var(--warning-border))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

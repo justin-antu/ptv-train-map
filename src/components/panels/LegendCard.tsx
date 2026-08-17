@@ -99,14 +99,14 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
                           setExpandedLineId(isExpanded ? null : line.id);
                         }}
                         title={`${disruptions.length} current disruption${disruptions.length === 1 ? "" : "s"} on the ${line.name} line`}
-                        className="shrink-0 text-amber-500 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                        className="shrink-0 text-amber-500 transition-colors hover:text-amber-600 dark:text-warning dark:hover:text-warning-foreground"
                       >
                         <AlertTriangle className="size-3.5" />
                       </button>
                     )}
                   </label>
                   {isExpanded && disruptions.length > 0 && (
-                    <div className="mb-1 space-y-1.5 rounded-md border border-amber-300/50 bg-amber-50 p-2 text-[10.5px] leading-snug text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300">
+                    <div className="mb-1 space-y-1.5 rounded-md border border-warning-border/50 bg-warning-surface p-2 text-[10.5px] leading-snug text-warning-foreground">
                       {disruptions.map((d) => (
                         <div key={d.id}>
                           <div>{d.title}</div>
