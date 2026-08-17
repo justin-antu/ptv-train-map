@@ -15,6 +15,10 @@ individual lines.
 - **Live map** of all 16 lines, each in its own official PTV colour, with
   trains animated between stations and a collapsible legend to show/hide
   individual lines (your selection is remembered across visits).
+- **Classic daily line timetables** — choose a line, Melbourne date (today
+  plus seven days), and direction to see services as rows and stations as
+  columns. Branched and express services retain explicit blank cells, and the
+  table scrolls horizontally on narrow screens with sticky identifiers.
 - **Delay & disruption visibility** — trains running noticeably late (≥3 min
   versus their scheduled time) get a pulsing amber ring on the map and a
   "+N min" badge on their info card; any line with an active PTV service
@@ -74,7 +78,19 @@ network in future and this list needs re-verifying.
    at runtime (processing all 16 lines from the raw ~250MB GTFS feed still
    only takes a few seconds, since every GTFS file is streamed exactly once
    regardless of line count).
-2. **Live data** (`public/data/network-live.json`) — predicted departure
+2. **Scheduled timetable** (`public/data/network-timetable.json`) — a compact
+   eight-Melbourne-day service matrix generated once daily by
+   `scripts/generate-timetable.ts`. Complete trip patterns, service calendars,
+   GTFS times beyond 24:00, and branch variants come from the official
+   Victorian **GTFS Schedule** feed. The script makes one PTV v3 `/routes`
+   request (when credentials are available) to verify that the same 16 Metro
+   route names are current. It deliberately does not call `/pattern` once per
+   run: PTV can enumerate a route's runs for a date, but complete times still
+   require one stopping-pattern request per run, which would produce many
+   thousands of redundant requests for eight days. The daily workflow
+   downloads and streams the feed once, validates the normalized schema, and
+   atomically replaces the artifact only after successful generation.
+3. **Live data** (`public/data/network-live.json`) — predicted departure
    times (scheduled *and* estimated, so per-train delay can be computed) per
    station across all 16 lines (~300 line/station pairs), plus current
    service alerts per line, fetched from the **PTV Timetable API v3**
@@ -86,14 +102,18 @@ network in future and this list needs re-verifying.
    and committed straight to `main`. This file does **not** exist until the
    first scheduled run (or a real key is configured) — see
    [Limitations](#limitations).
-3. **The frontend** (`src/`) loads both files, draws every line + deduplicated
+4. **The frontend** (`src/`) loads the static, live, and timetable files. The
+   timetable is scheduled data; it is not presented as real-time. The existing
+   live snapshot does not expose a consistently joinable GTFS trip identity,
+   so estimates are not overlaid unless that can be made reliable in future.
+   The map draws every line + deduplicated
    station markers in each line's official PTV colour, renders a legend panel
    to show/hide individual lines, and animates a train icon per active
    service by interpolating its position along its own line's track polyline
    between the two stations bracketing the current time — recomputed every
    animation frame (a single shared loop across all lines/trains) and
    re-synced whenever a fresh live snapshot is polled (every 30s).
-4. **Deployment** — [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+5. **Deployment** — [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
    builds the Vite app and publishes it to GitHub Pages on every push to `main`
    (including the automated data-refresh commits).
 
@@ -144,6 +164,16 @@ network in future and this list needs re-verifying.
   the gap between a stop's originally-scheduled time and PTV's current
   predicted time for it — it's only as accurate/timely as PTV's own
   prediction, same caveat as train positions above.
+- **The right-pane timetable is scheduled, not real-time.** It is generated
+  daily from GTFS service calendars and stop times. Current PTV predictions
+  remain in `network-live.json`; they are not merged into timetable cells
+  because PTV `run_ref` and GTFS `trip_id` are not guaranteed to be the same
+  stable identifier.
+- **PTV v3 has no documented public paging or rate quota for route runs.**
+  `/v3/runs/route/{route_id}` accepts one `date_utc` and returns that route's
+  runs, while `/v3/pattern/run/{run_ref}/route_type/0` returns one complete
+  pattern. Using those alone for 16 lines × 8 days would require a pattern call
+  for every service, so the generator uses GTFS for the complete matrix.
 - **Disruption alerts are per-line, not per-stop.** A line-level PTV service
   alert doesn't necessarily affect every station on that line equally, but
   it's surfaced as a single legend indicator for the whole line for
@@ -157,6 +187,7 @@ network in future and this list needs re-verifying.
 │   ├── icons/                  App/favicon icons referenced by index.html + the manifest
 │   └── data/
 │       ├── network-static.json    Committed: all 16 lines' stations + polylines + colours (from GTFS)
+│       ├── network-timetable.json Bot-committed daily: eight Melbourne dates of scheduled service matrices
 │       └── network-live.json      Bot-committed: live departures + per-line disruptions (created by CI)
 ├── scripts/
 │   ├── lib/
@@ -166,6 +197,7 @@ network in future and this list needs re-verifying.
 │   │   ├── ptvClient.ts       PTV Timetable API v3 HMAC-SHA1 signing + typed fetch helpers (departures + disruptions)
 │   │   └── ptvClient.test.ts  Regression test for the signing algorithm (`npx tsx scripts/lib/ptvClient.test.ts`)
 │   ├── generate-static-data.ts  Regenerates network-static.json from the GTFS feed (rarely needed)
+│   ├── generate-timetable.ts    Generates/validates the next eight Melbourne service dates from GTFS
 │   └── fetch-live-data.ts       Fetches live departures + disruptions for all lines, writes network-live.json (run by CI on a schedule)
 ├── src/
 │   ├── config.ts               Non-secret app config (data URLs, poll intervals)
@@ -182,6 +214,7 @@ network in future and this list needs re-verifying.
 │   └── main.ts                 App entry point
 └── .github/workflows/
     ├── refresh-data.yml        Scheduled: fetches live data + disruptions for all lines, commits public/data/network-live.json
+    ├── refresh-timetable.yml   Daily 16:30 UTC: downloads GTFS, validates and commits the eight-day timetable
     └── deploy.yml              Builds with Vite and deploys to GitHub Pages on push to main
 ```
 
@@ -214,11 +247,14 @@ Other useful scripts:
 npm run build            # type-checks and builds the production site into dist/
 npm run typecheck        # tsc --noEmit
 npm run generate:static-data   # regenerate network-static.json from a local GTFS extract (see script header comment)
+npm run generate:timetable     # generate today + 7 Melbourne dates (uses GTFS_DIR; optionally validates with .env)
+npm run verify:timetable       # pure transformation/timezone/branch/overnight checks
 ```
 
 ## GitHub repo secrets (required for live data)
 
-For the scheduled workflow to fetch real live departures, add two
+For the scheduled workflows to fetch real live departures and validate current
+route metadata during timetable generation, add two
 **repository secrets** (Settings → Secrets and variables → Actions → New
 repository secret):
 
@@ -249,6 +285,8 @@ fork this repo under a different name, update that base path to match.
   (Department of Transport and Planning, CC BY 4.0) — each line's official PTV
   colour comes straight from its GTFS `route_color` field.
 - Live departure predictions: [PTV Timetable API v3](https://www.vic.gov.au/public-transport-timetable-api).
+- Daily scheduled service matrices: [Victorian GTFS Schedule](https://opendata.transport.vic.gov.au/dataset/gtfs-schedule),
+  with route-name validation against PTV Timetable API v3.
 - Basemap tiles: [CARTO](https://carto.com/attributions) Positron, © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 - In-scope line list: verified against the live PTV Timetable API and the
   Victorian GTFS feed on 2026-08-17 — see `scripts/lib/lines.ts` for the full
