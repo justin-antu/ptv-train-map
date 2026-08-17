@@ -3,11 +3,12 @@ import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { MapView, type MapViewHandle } from "./components/MapView";
 import { LeftPane } from "./components/panels/LeftPane";
-import { FlindersDepartureBoard } from "./components/panels/FlindersDepartureBoard";
+import { LineTimetable } from "./components/panels/LineTimetable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
 import { useLiveData } from "./hooks/useLiveData";
+import { useTimetableData } from "./hooks/useTimetableData";
 import { useVisibleLines } from "./hooks/useVisibleLines";
 import { useFavouriteStation } from "./hooks/useFavouriteStation";
 import { useNotifications } from "./hooks/useNotifications";
@@ -21,6 +22,7 @@ export default function App() {
   const [theme, setTheme] = useTheme();
   const { data: staticData, error: staticDataError } = useStaticData();
   const live = useLiveData(staticData);
+  const timetable = useTimetableData();
   const [selection, setSelection] = useState<Selection>(null);
   const mapRef = useRef<MapViewHandle>(null);
 
@@ -120,8 +122,13 @@ export default function App() {
             />
           </main>
 
-          <aside className="side-pane-grid order-3 min-h-[32rem] border-t border-border p-3 lg:order-none lg:block lg:h-full lg:min-h-0 lg:border-t-0 lg:border-l">
-            <FlindersDepartureBoard lines={staticData.lines} stations={staticData.stations} runs={live.runs} />
+          <aside className="side-pane-grid order-3 h-[42rem] min-h-[32rem] border-t border-border p-3 lg:order-none lg:block lg:h-full lg:min-h-0 lg:border-t-0 lg:border-l">
+            <LineTimetable
+              data={timetable.data}
+              loading={timetable.loading}
+              error={timetable.error}
+              disruptionsByLine={live.disruptionsByLine}
+            />
           </aside>
         </div>
 

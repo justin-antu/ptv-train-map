@@ -15,6 +15,9 @@ export const STATIC_DATA_URL = `${BASE_URL}data/network-static.json`;
 /** Path to the frequently-refreshed live departures snapshot, covering every in-scope line (see scripts/fetch-live-data.ts). */
 export const LIVE_DATA_URL = `${BASE_URL}data/network-live.json`;
 
+/** Daily scheduled service matrix generated server-side from the official Victorian GTFS feed. */
+export const TIMETABLE_DATA_URL = `${BASE_URL}data/network-timetable.json`;
+
 /** How often the browser re-polls the live JSON file for a fresh snapshot. */
 export const LIVE_POLL_INTERVAL_MS = 30_000;
 
