@@ -123,6 +123,35 @@ interface PtvDeparturesResponse {
   runs: Record<string, PtvRunSummary>;
 }
 
+export interface PtvDisruptionRoute {
+  route_id: number;
+}
+
+export interface PtvDisruption {
+  disruption_id: number;
+  title: string;
+  url: string | null;
+  disruption_status: string;
+  disruption_type: string;
+  from_date: string | null;
+  to_date: string | null;
+  routes: PtvDisruptionRoute[];
+}
+
+/**
+ * The API groups disruptions by transport mode (metro_train, metro_tram, general,
+ * regional_train, etc.) — we only care about a handful of these, but type the
+ * response loosely (all optional arrays) rather than exhaustively listing every
+ * mode, since which modes are present depends on what's actually disrupted.
+ */
+interface PtvDisruptionsByMode {
+  [mode: string]: PtvDisruption[] | undefined;
+}
+
+interface PtvDisruptionsResponse {
+  disruptions: PtvDisruptionsByMode;
+}
+
 // --- Public helpers --------------------------------------------------------
 
 /** GET /v3/routes?route_types={routeType} — used to resolve each in-scope line's route_id. */
@@ -139,6 +168,24 @@ export async function getStopsForRoute(
 ): Promise<PtvStop[]> {
   const res = await ptvGet<PtvStopsResponse>(`/v3/stops/route/${routeId}/route_type/${routeType}`, credentials);
   return res.stops;
+}
+
+/**
+ * GET /v3/disruptions/route/{routeId}?disruption_status=current — current (not
+ * "planned") disruptions affecting a route. Verified against a real response on
+ * 2026-08-17 (route_id 9, Lilydale): returns
+ * `{ disruptions: { metro_train: [...], general: [...], ... }, status }`, each
+ * disruption carrying `disruption_id`, `title`, `url`, `disruption_type`,
+ * `from_date`/`to_date`, and a `routes[]` array of every route it applies to.
+ * We flatten every mode's array rather than assuming `metro_train` is the only
+ * relevant one (a network-wide disruption can be filed under `general` while
+ * still listing our route_id in its `routes[]`), and let the caller filter/dedupe.
+ */
+export async function getDisruptionsForRoute(routeId: number, credentials: PtvCredentials): Promise<PtvDisruption[]> {
+  const res = await ptvGet<PtvDisruptionsResponse>(`/v3/disruptions/route/${routeId}?disruption_status=current`, credentials);
+  return Object.values(res.disruptions ?? {})
+    .filter((arr): arr is PtvDisruption[] => Array.isArray(arr))
+    .flat();
 }
 
 /**

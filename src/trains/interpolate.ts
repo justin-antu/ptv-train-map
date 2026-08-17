@@ -11,6 +11,16 @@ export interface TrainPosition {
   progress: number;
   fromStationId: string;
   toStationId: string;
+  /**
+   * Minutes late at the run's next (or current, if waiting/arrived) predicted
+   * stop, derived from that stop's `timeUtc - scheduledTimeUtc`. 0 or negative
+   * means on time/early. Rounded to the nearest minute.
+   */
+  delayMin: number;
+}
+
+function delayMinutesFor(stop: { timeUtc: string; scheduledTimeUtc: string }): number {
+  return Math.round((Date.parse(stop.timeUtc) - Date.parse(stop.scheduledTimeUtc)) / 60_000);
 }
 
 /** Per-line geometry needed to interpolate along that line's own polyline/station positions. */
@@ -92,6 +102,7 @@ export function computeTrainPositions(
             progress: 0,
             fromStationId: station.id,
             toStationId: station.id,
+            delayMin: delayMinutesFor(stops[0]),
           });
         }
       }
@@ -100,7 +111,8 @@ export function computeTrainPositions(
 
     if (now > lastTime) {
       if (now - lastTime <= options.staleAfterMs) {
-        const station = stationsById.get(stops[stops.length - 1].stationId);
+        const lastStop = stops[stops.length - 1];
+        const station = stationsById.get(lastStop.stationId);
         if (station) {
           positions.push({
             runRef: run.runRef,
@@ -111,6 +123,7 @@ export function computeTrainPositions(
             progress: 1,
             fromStationId: station.id,
             toStationId: station.id,
+            delayMin: delayMinutesFor(lastStop),
           });
         }
       }
@@ -160,6 +173,7 @@ export function computeTrainPositions(
           progress,
           fromStationId: stationA.id,
           toStationId: stationB.id,
+          delayMin: delayMinutesFor(b),
         });
         break;
       }

@@ -11,15 +11,19 @@
  *   PTV_DEV_ID=... PTV_API_KEY=... npm run fetch:live-data
  *
  * The exact request/response shapes used here (route_type=0 for train, the
- * /v3/routes, /v3/stops/route/{id}/route_type/{type} and
- * /v3/departures/route_type/{type}/stop/{id}/route/{id} endpoints, and field
- * names like estimated_departure_utc) were verified against the live Swagger
- * docs and confirmed end-to-end against the real API with real credentials.
+ * /v3/routes, /v3/stops/route/{id}/route_type/{type},
+ * /v3/departures/route_type/{type}/stop/{id}/route/{id}, and
+ * /v3/disruptions/route/{id} endpoints, and field names like
+ * estimated_departure_utc/scheduled_departure_utc and disruption_id/title/
+ * disruption_type) were verified against the live Swagger docs and confirmed
+ * end-to-end against the real API with real credentials.
  *
  * Scale note: with 16 lines and ~280 (line, station) pairs across the whole
  * network, fetching departures one-by-one would take a while — requests are
  * therefore issued with bounded concurrency (see scripts/lib/concurrency.ts)
- * rather than either fully sequential or fully unbounded-parallel.
+ * rather than either fully sequential or fully unbounded-parallel. Disruptions
+ * add only ~16 more requests (one per line), fetched concurrently alongside
+ * the departure jobs rather than adding a separate sequential phase.
  */
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -36,12 +40,14 @@ if (existsSync(dotEnvPath)) {
 import { mapWithConcurrency } from "./lib/concurrency.ts";
 import {
   getDeparturesForStop,
+  getDisruptionsForRoute,
   getRoutes,
   getStopsForRoute,
   ROUTE_TYPE_TRAIN,
   type PtvCredentials,
+  type PtvDisruption,
 } from "./lib/ptvClient.ts";
-import type { LiveRun, LiveRunStop, LiveSnapshot, NetworkStaticData, StationStatic } from "../src/shared/types.ts";
+import type { LineDisruption, LiveRun, LiveRunStop, LiveSnapshot, NetworkStaticData, StationStatic } from "../src/shared/types.ts";
 
 const STATIC_DATA_PATH = path.resolve("public/data/network-static.json");
 const OUTPUT_PATH = path.resolve("public/data/network-live.json");
@@ -108,6 +114,51 @@ interface DepartureJob {
   stopId: number;
 }
 
+function toLineDisruption(d: PtvDisruption): LineDisruption {
+  return {
+    id: d.disruption_id,
+    title: d.title,
+    url: d.url,
+    disruptionType: d.disruption_type,
+    fromDateUtc: d.from_date,
+    toDateUtc: d.to_date,
+  };
+}
+
+/**
+ * Fetches current disruptions for every line with a resolved route_id, one
+ * request per line (~16 total — negligible next to the ~280 departure
+ * requests below). A disruption can list multiple routes (e.g. a Flinders
+ * Street / City Loop disruption affecting many lines at once); we dedupe by
+ * disruption_id per line rather than assuming a 1:1 disruption-to-line mapping.
+ */
+async function fetchDisruptionsByLine(
+  lines: { id: string; name: string; routeId: number | undefined }[],
+  credentials: PtvCredentials,
+): Promise<Record<string, LineDisruption[]>> {
+  const result: Record<string, LineDisruption[]> = {};
+
+  await mapWithConcurrency(
+    lines.filter((l): l is { id: string; name: string; routeId: number } => l.routeId !== undefined),
+    FETCH_CONCURRENCY,
+    async (line) => {
+      try {
+        const disruptions = await getDisruptionsForRoute(line.routeId, credentials);
+        const relevant = disruptions.filter((d) => d.routes.some((r) => r.route_id === line.routeId));
+        if (relevant.length === 0) return;
+
+        const byId = new Map<number, LineDisruption>();
+        for (const d of relevant) byId.set(d.disruption_id, toLineDisruption(d));
+        result[line.id] = [...byId.values()];
+      } catch (err) {
+        console.warn(`Warning: failed to fetch disruptions for ${line.name} line (route_id ${line.routeId}):`, err);
+      }
+    },
+  );
+
+  return result;
+}
+
 async function fetchSnapshot(): Promise<LiveSnapshot> {
   const credentials = readCredentials();
   const staticData: NetworkStaticData = JSON.parse(await readFile(STATIC_DATA_PATH, "utf8"));
@@ -151,6 +202,11 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
 
   console.log(`Fetching departures for ${jobs.length} (line, station) pairs across ${staticData.lines.length} lines (concurrency ${FETCH_CONCURRENCY})...`);
 
+  const disruptionsByLinePromise = fetchDisruptionsByLine(
+    staticData.lines.map((line) => ({ id: line.id, name: line.name, routeId: routeIdByLineName.get(line.name) })),
+    credentials,
+  );
+
   const runs = new Map<string, LiveRun>();
 
   await mapWithConcurrency(jobs, FETCH_CONCURRENCY, async (job) => {
@@ -165,12 +221,13 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
 
       for (const departure of departures) {
         const timeUtc = departure.estimated_departure_utc ?? departure.scheduled_departure_utc;
-        if (!timeUtc) continue;
+        if (!timeUtc || !departure.scheduled_departure_utc) continue;
 
         const stop: LiveRunStop = {
           stationId: job.stationId,
           timeUtc,
           isEstimate: Boolean(departure.estimated_departure_utc),
+          scheduledTimeUtc: departure.scheduled_departure_utc,
         };
 
         const key = `${job.lineId}:${departure.run_ref}`;
@@ -196,9 +253,12 @@ async function fetchSnapshot(): Promise<LiveSnapshot> {
     run.stops.sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc));
   }
 
+  const disruptionsByLine = await disruptionsByLinePromise;
+
   return {
     generatedAtUtc: new Date().toISOString(),
     lines: lineResults,
+    disruptionsByLine,
     runs: [...runs.values()],
   };
 }
@@ -212,6 +272,9 @@ async function main() {
   for (const [lineId, count] of [...perLineCounts.entries()].sort()) {
     console.log(`  ${lineId}: ${count} run(s)`);
   }
+  const disruptionLines = Object.keys(snapshot.disruptionsByLine ?? {});
+  const disruptionCount = Object.values(snapshot.disruptionsByLine ?? {}).reduce((sum, ds) => sum + ds.length, 0);
+  console.log(`Found ${disruptionCount} current disruption(s) across ${disruptionLines.length} line(s): ${disruptionLines.sort().join(", ") || "(none)"}`);
 }
 
 main().catch((err: unknown) => {

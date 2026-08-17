@@ -188,9 +188,56 @@ body {
 }
 
 .legend-name {
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.legend-row {
+  min-width: 0;
+}
+
+.legend-alert {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #b46a00;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.legend-alert-detail {
+  margin: 2px 0 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff8ea;
+  border: 1px solid #f4d78a;
+}
+
+.legend-alert-item + .legend-alert-item {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.legend-alert-title {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #5c3d00;
+}
+
+.legend-alert-link {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #8a5700;
 }
 
 .train-marker {
@@ -222,6 +269,30 @@ body {
   border-radius: 50%;
   border: 2px solid #ffffff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Delayed trains get a pulsing amber ring around the usual line-coloured dot,
+ * rather than a whole separate icon set — keeps the line colour (the primary
+ * signal) intact while still reading as "something's off" at a glance. */
+.train-marker--delayed .train-marker-dot {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 2px #f4a300;
+  animation: train-delayed-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes train-delayed-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 0 0 2px #f4a300;
+  }
+  50% {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 0 0 4px rgba(244, 163, 0, 0.55);
+  }
 }
 
 .train-marker-icon {
@@ -310,4 +381,15 @@ body {
   font-size: 11.5px;
   color: #888;
   font-style: italic;
+}
+
+.info-card-delay {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #8a5700;
+  background: #fff1d6;
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: auto;
+  flex: none;
 }

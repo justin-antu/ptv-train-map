@@ -1,7 +1,16 @@
+import type { LineDisruption } from "../shared/types";
+
 export interface LegendLine {
   id: string;
   name: string;
   color: string;
+}
+
+export interface LegendController {
+  /** Programmatically force a specific set of lines visible (e.g. from a search result or trip planner pick), syncing checkboxes + storage + onChange. */
+  setVisible(lineIds: Iterable<string>): void;
+  /** Updates the per-line disruption indicator/detail text; call whenever a fresh live snapshot is polled. */
+  setDisruptions(disruptionsByLine: Record<string, LineDisruption[]>): void;
 }
 
 const VISIBLE_LINES_STORAGE_KEY = "wimt:visibleLineIds";
@@ -49,6 +58,23 @@ function saveCollapsed(collapsed: boolean): void {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => {
+    switch (c) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
+}
+
 /**
  * Renders a collapsible show/hide checkbox legend for every line into
  * `container`, calling `onChange` with the current set of visible line ids
@@ -60,15 +86,22 @@ function saveCollapsed(collapsed: boolean): void {
  * are persisted to `localStorage` so a returning visitor sees their last
  * configuration instead of resetting every time. A first-ever visitor (no
  * stored preference yet) sees every line visible by default.
+ *
+ * Each line row can also show a small disruption warning indicator (see
+ * `setDisruptions` on the returned controller) — clicking it expands an
+ * inline detail row with the disruption title(s) and a link, rather than
+ * opening a whole separate popup/panel.
  */
 export function createLegend(
   container: HTMLElement,
   lines: LegendLine[],
   onChange: (visibleLineIds: ReadonlySet<string>) => void,
-): void {
+): LegendController {
   const allLineIds = lines.map((l) => l.id);
   const visible = loadVisibleLineIds(allLineIds);
   const checkboxes = new Map<string, HTMLInputElement>();
+  const alertButtons = new Map<string, HTMLButtonElement>();
+  const alertDetails = new Map<string, HTMLDivElement>();
 
   container.innerHTML = "";
   container.classList.toggle("legend-collapsed", loadCollapsed());
@@ -111,6 +144,13 @@ export function createLegend(
   };
 
   for (const line of lines) {
+    // Each line gets one grid cell (`.legend-row`) containing the checkbox row
+    // plus an initially-hidden detail block — keeping both inside a single grid
+    // item is what lets the disruption detail expand without disturbing the
+    // 2-column grid's placement of every other line's row.
+    const row = document.createElement("div");
+    row.className = "legend-row";
+
     const item = document.createElement("label");
     item.className = "legend-item";
 
@@ -132,8 +172,30 @@ export function createLegend(
     label.className = "legend-name";
     label.textContent = line.name;
 
-    item.append(checkbox, swatch, label);
-    list.appendChild(item);
+    const alertBtn = document.createElement("button");
+    alertBtn.type = "button";
+    alertBtn.className = "legend-alert";
+    alertBtn.textContent = "\u26A0";
+    alertBtn.style.display = "none";
+    alertButtons.set(line.id, alertBtn);
+
+    item.append(checkbox, swatch, label, alertBtn);
+    row.appendChild(item);
+
+    const detail = document.createElement("div");
+    detail.className = "legend-alert-detail";
+    detail.style.display = "none";
+    alertDetails.set(line.id, detail);
+    row.appendChild(detail);
+
+    alertBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const isOpen = detail.style.display !== "none";
+      detail.style.display = isOpen ? "none" : "block";
+    });
+
+    list.appendChild(row);
   }
 
   allBtn.addEventListener("click", () => {
@@ -150,4 +212,48 @@ export function createLegend(
   // Sync the caller's initial state (e.g. main.ts's train-position filter) with
   // whatever we just restored/defaulted to, without waiting for user interaction.
   onChange(visible);
+
+  return {
+    setVisible(lineIds) {
+      const wanted = new Set(lineIds);
+      let changed = false;
+      for (const id of wanted) {
+        if (!visible.has(id)) {
+          visible.add(id);
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      for (const [id, checkbox] of checkboxes) checkbox.checked = visible.has(id);
+      emit();
+    },
+
+    setDisruptions(disruptionsByLine) {
+      for (const line of lines) {
+        const disruptions = disruptionsByLine[line.id] ?? [];
+        const alertBtn = alertButtons.get(line.id);
+        const detail = alertDetails.get(line.id);
+        if (!alertBtn || !detail) continue;
+
+        if (disruptions.length === 0) {
+          alertBtn.style.display = "none";
+          detail.style.display = "none";
+          detail.innerHTML = "";
+          continue;
+        }
+
+        alertBtn.style.display = "inline-flex";
+        alertBtn.title = `${disruptions.length} current disruption${disruptions.length === 1 ? "" : "s"} on the ${line.name} line`;
+        detail.innerHTML = disruptions
+          .map(
+            (d) => `
+              <div class="legend-alert-item">
+                <div class="legend-alert-title">${escapeHtml(d.title)}</div>
+                ${d.url ? `<a class="legend-alert-link" href="${escapeHtml(d.url)}" target="_blank" rel="noopener noreferrer">More info</a>` : ""}
+              </div>`,
+          )
+          .join("");
+      }
+    },
+  };
 }

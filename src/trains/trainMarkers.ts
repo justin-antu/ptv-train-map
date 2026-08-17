@@ -1,6 +1,9 @@
 import maplibregl from "maplibre-gl";
 import type { TrainPosition } from "./interpolate";
 
+/** Minutes late before a train is visually flagged as delayed — small (1-2 min) prediction jitter is normal and not worth flagging. */
+const DELAYED_THRESHOLD_MIN = 3;
+
 interface TrackedMarker {
   marker: maplibregl.Marker;
   /** Kept in sync every update() so the click handler (bound once, at creation) always reports the current position. */
@@ -52,7 +55,9 @@ export class TrainMarkerLayer {
       }
       tracked.position = pos;
       const el = tracked.marker.getElement();
-      el.title = `To ${pos.destinationName}`;
+      const delayed = pos.delayMin >= DELAYED_THRESHOLD_MIN;
+      el.title = delayed ? `To ${pos.destinationName} (+${pos.delayMin} min late)` : `To ${pos.destinationName}`;
+      el.classList.toggle("train-marker--delayed", delayed);
       const dot = el.querySelector<HTMLElement>(".train-marker-dot");
       if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
       tracked.marker.setLngLat([pos.lon, pos.lat]);

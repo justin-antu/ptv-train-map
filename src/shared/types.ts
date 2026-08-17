@@ -54,6 +54,13 @@ export interface LiveRunStop {
   timeUtc: string;
   /** True if `timeUtc` came from a real-time PTV prediction rather than the static schedule. */
   isEstimate: boolean;
+  /**
+   * ISO 8601 UTC *scheduled* (timetabled) departure time, kept alongside `timeUtc`
+   * even when a real-time estimate is available, so a delay in minutes can be
+   * derived as `timeUtc - scheduledTimeUtc` (0 when not estimated, since then
+   * `timeUtc === scheduledTimeUtc`).
+   */
+  scheduledTimeUtc: string;
 }
 
 export interface LiveRun {
@@ -69,6 +76,22 @@ export interface LiveRun {
   stops: LiveRunStop[];
 }
 
+/** A current or planned PTV service alert/disruption affecting a specific line. */
+export interface LineDisruption {
+  /** PTV disruption_id — stable identifier, used to dedupe the same disruption across lines/stops. */
+  id: number;
+  /** Headline title summarising the disruption (PTV's own wording). */
+  title: string;
+  /** URL of the relevant article on the PTV website, if any. */
+  url: string | null;
+  /** PTV's own disruption_type label, e.g. "Planned Works", "Station detour". */
+  disruptionType: string;
+  /** ISO 8601 UTC start time, if known. */
+  fromDateUtc: string | null;
+  /** ISO 8601 UTC end time, if known (open-ended disruptions have no end date yet). */
+  toDateUtc: string | null;
+}
+
 export interface LiveSnapshot {
   /** ISO timestamp of when this snapshot was fetched from the PTV API. */
   generatedAtUtc: string;
@@ -77,4 +100,10 @@ export interface LiveSnapshot {
   /** Resolved PTV Timetable API route_id per line, or null if it couldn't be resolved this run. */
   lines: { id: string; ptvRouteId: number | null }[];
   runs: LiveRun[];
+  /**
+   * Current disruptions per line, keyed by LineStatic.id. Lines with no current
+   * disruption are omitted entirely (rather than present with an empty array)
+   * to keep the committed JSON lean.
+   */
+  disruptionsByLine?: Record<string, LineDisruption[]>;
 }

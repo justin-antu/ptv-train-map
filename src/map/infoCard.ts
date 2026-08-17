@@ -121,6 +121,14 @@ export function createInfoCardController(
       </div>`;
   }
 
+  const DELAYED_THRESHOLD_MIN = 3;
+
+  /** Small "+X min" pill shown for meaningfully-late trains; on-time/early trains show nothing extra. */
+  function delayBadgeHtml(delayMin: number): string {
+    if (delayMin < DELAYED_THRESHOLD_MIN) return "";
+    return `<span class="info-card-delay">+${delayMin} min</span>`;
+  }
+
   function renderTrainHtml(pos: TrainPosition, runs: LiveRun[], now: number): string {
     const run = runs.find((r) => r.lineId === pos.lineId && r.runRef === pos.runRef);
     const nextStop = run?.stops.find((s) => Date.parse(s.timeUtc) > now) ?? null;
@@ -135,7 +143,7 @@ export function createInfoCardController(
           </div>`
         : `<div class="info-card-empty">Approaching ${escapeHtml(pos.destinationName)}</div>`;
     return `<div class="info-card">
-        <div class="info-card-title"><span class="legend-swatch" style="background:${color}"></span>${escapeHtml(lineName)}</div>
+        <div class="info-card-title"><span class="legend-swatch" style="background:${color}"></span>${escapeHtml(lineName)}${delayBadgeHtml(pos.delayMin)}</div>
         <div class="info-card-subtitle">To ${escapeHtml(pos.destinationName)}</div>
         ${nextRow}
       </div>`;

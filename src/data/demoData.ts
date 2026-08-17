@@ -53,10 +53,14 @@ export function generateDemoSnapshot(staticData: NetworkStaticData): LiveSnapsho
 
       const stops: LiveRunStop[] = [];
       for (let s = windowStart; s <= windowEnd; s++) {
+        const timeUtc = new Date(tripStart + s * msPerSegment).toISOString();
         stops.push({
           stationId: orderedStationIds[s],
-          timeUtc: new Date(tripStart + s * msPerSegment).toISOString(),
+          timeUtc,
           isEstimate: true,
+          // Synthetic trains are never delayed — scheduled === estimated so any
+          // delay badge computed from these two fields naturally comes out as 0.
+          scheduledTimeUtc: timeUtc,
         });
       }
 

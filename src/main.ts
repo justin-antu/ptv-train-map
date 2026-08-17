@@ -65,7 +65,7 @@ async function main() {
   });
 
   let visibleLineIds = new Set(staticData.lines.map((l) => l.id));
-  createLegend(
+  const legend = createLegend(
     legendContainer,
     staticData.lines.map((l) => ({ id: l.id, name: l.name, color: l.color })),
     (visible) => {
@@ -82,6 +82,7 @@ async function main() {
     const generated = new Date(snapshot.generatedAtUtc);
     const label = isDemo ? "Sample preview — live data unavailable" : `Live data as of ${generated.toLocaleTimeString()}`;
     statusText.textContent = `${label} · ${currentRuns.length} train${currentRuns.length === 1 ? "" : "s"} tracked`;
+    legend.setDisruptions(snapshot.disruptionsByLine ?? {});
   });
 
   startAnimationLoop((now) => {
