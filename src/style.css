@@ -38,6 +38,11 @@ body {
   max-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
+  /* The panel can get tall (search + favourite board + 16-line legend +
+     disruption details + trip planner) — scrolling the whole card as one
+     unit is simpler and more robust across viewport sizes than trying to
+     carve out per-section internal scroll areas. */
+  overflow-y: auto;
   background: rgba(255, 255, 255, 0.94);
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
@@ -556,4 +561,90 @@ body {
   padding: 1px 6px;
   margin-left: auto;
   flex: none;
+}
+
+/* Mobile-first responsive pass: below this width the floating panel becomes a
+ * near-full-width card with a shorter max-height (so some map stays visible
+ * behind it) and touch targets throughout are sized up a little, rather than
+ * relying on the same desktop density on a phone. */
+@media (max-width: 640px) {
+  .panel {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 70vh;
+    padding: 12px 14px;
+  }
+
+  .panel h1 {
+    font-size: 16px;
+  }
+
+  .status-row {
+    flex-wrap: wrap;
+  }
+
+  .legend-list {
+    grid-template-columns: 1fr;
+  }
+
+  .legend-item {
+    padding: 5px 0;
+    font-size: 13px;
+  }
+
+  .legend-item input {
+    width: 17px;
+    height: 17px;
+  }
+
+  .legend-alert {
+    width: 22px;
+    height: 22px;
+    font-size: 13px;
+  }
+
+  .legend-actions button {
+    padding: 5px 12px;
+    font-size: 12.5px;
+  }
+
+  .station-autocomplete-input {
+    padding: 9px 10px;
+    font-size: 16px; /* >=16px prevents iOS Safari from auto-zooming in on focus */
+  }
+
+  .station-autocomplete-item {
+    padding: 10px 10px;
+    font-size: 13.5px;
+  }
+
+  .fav-board-name,
+  .info-card-title-text {
+    font-size: 15px;
+  }
+
+  .fav-board-remove,
+  .info-card-favourite {
+    padding: 4px 6px;
+    font-size: 19px;
+  }
+
+  .fav-board-notify {
+    font-size: 12px;
+  }
+
+  .fav-board-notify input {
+    width: 16px;
+    height: 16px;
+  }
+
+  .info-popup .maplibregl-popup-content {
+    padding: 12px 14px;
+  }
+
+  .info-card-row {
+    padding: 5px 0;
+  }
 }
