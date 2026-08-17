@@ -3,11 +3,17 @@
 export const APP_TITLE = "Dude, where's my train?";
 export const NETWORK_SUBTITLE = "Metro Trains Melbourne";
 
+// import.meta.env.BASE_URL is Vite's configured base path (see vite.config.ts) —
+// "/" in local dev, but "/ptv-train-map/" in the GitHub Pages production build.
+// Data URLs must be built from it rather than hardcoded as root-absolute paths,
+// otherwise they 404 once deployed under the Pages project subpath.
+const BASE_URL = import.meta.env.BASE_URL;
+
 /** Path to the committed, rarely-changing station/polyline data for every in-scope line (see scripts/generate-static-data.ts). */
-export const STATIC_DATA_URL = "/data/network-static.json";
+export const STATIC_DATA_URL = `${BASE_URL}data/network-static.json`;
 
 /** Path to the frequently-refreshed live departures snapshot, covering every in-scope line (see scripts/fetch-live-data.ts). */
-export const LIVE_DATA_URL = "/data/network-live.json";
+export const LIVE_DATA_URL = `${BASE_URL}data/network-live.json`;
 
 /** How often the browser re-polls the live JSON file for a fresh snapshot. */
 export const LIVE_POLL_INTERVAL_MS = 30_000;
