@@ -39,7 +39,7 @@ export const Header = memo(function Header({ theme, onThemeChange, isDemo, gener
             {isDemo
               ? "Sample preview"
               : generatedAtUtc
-                ? `Live · ${new Date(generatedAtUtc).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                ? `Last updated · ${new Date(generatedAtUtc).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
                 : "Loading…"}
           </span>
           {trainCount > 0 && (
