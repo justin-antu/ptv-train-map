@@ -59,7 +59,7 @@ export function SelectedInfoCard({
     return (
       <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-500 bg-card/80 p-4 shadow-sm backdrop-blur-sm dark:border-l-foreground/60">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1 truncate text-base font-bold">{station.name}</div>
+          <div className="type-heading min-w-0 flex-1 truncate text-base">{station.name}</div>
           <div className="flex shrink-0 items-center gap-0.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -119,7 +119,7 @@ export function SelectedInfoCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-3 shrink-0 rounded-full ring-2 ring-white" style={{ background: color }} />
-          <span className="truncate text-base font-bold">{lineName}</span>
+          <span className="type-heading truncate text-base">{lineName}</span>
           <DelayBadge delayMin={delayMin} />
         </div>
         <Button size="icon-sm" variant="ghost" onClick={onClose} className="shrink-0 text-muted-foreground">

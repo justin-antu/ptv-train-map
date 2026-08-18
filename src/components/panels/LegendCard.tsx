@@ -60,7 +60,7 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          className="flex w-full items-center justify-between px-4 py-3 text-xs font-bold tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
+          className="type-label flex min-h-11 w-full items-center justify-between px-4 py-3 text-muted-foreground transition-colors hover:text-foreground"
         >
           <span>Lines</span>
           <ChevronDown className={cn("size-4 transition-transform duration-200", open && "rotate-180")} />
@@ -123,17 +123,17 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
                         <article key={disruption.id} className={cn(index > 0 && "border-t border-warning-border/40 pt-3")}>
                           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                             {disruption.disruptionType && (
-                              <span className="rounded-full border border-warning-border/60 bg-warning-muted/70 px-2 py-0.5 text-[9px] tracking-[0.12em] uppercase">
+                              <span className="type-label rounded-full border border-warning-border/60 bg-warning-muted/70 px-2 py-0.5">
                                 {disruption.disruptionType}
                               </span>
                             )}
                             {disruption.disruptionStatus && (
-                              <span className="text-[9px] tracking-[0.12em] text-warning-foreground/70 uppercase">{disruption.disruptionStatus}</span>
+                              <span className="type-label text-warning-foreground/70">{disruption.disruptionStatus}</span>
                             )}
                           </div>
                           <p className="text-[11px] leading-relaxed">{disruption.title}</p>
                           {(disruption.fromDateUtc || disruption.toDateUtc) && (
-                            <p className="mt-1.5 text-[10px] leading-snug text-warning-foreground/75">
+                            <p className="mt-1.5 text-[11px] leading-snug text-warning-foreground/75">
                               {formatAffectedDates(disruption.fromDateUtc, disruption.toDateUtc)}
                             </p>
                           )}
@@ -142,7 +142,7 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
                               href={disruption.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold underline decoration-warning-border underline-offset-2 hover:text-foreground"
+                              className="mt-2 inline-flex min-h-7 items-center gap-1 text-[11px] font-medium underline decoration-warning-border underline-offset-2 hover:text-foreground"
                             >
                               PTV details <ExternalLink className="size-3" aria-hidden="true" />
                             </a>

@@ -11,7 +11,7 @@ function GithubMark({ className }: { className?: string }) {
 
 export function Footer() {
   return (
-    <footer className="relative z-10 border-t border-border bg-card/60 px-4 py-2.5 text-center text-[10.5px] leading-relaxed text-muted-foreground backdrop-blur-sm sm:px-6">
+    <footer className="relative z-10 border-t border-border bg-card/60 px-4 py-2.5 text-center text-[11px] leading-relaxed text-muted-foreground backdrop-blur-sm sm:px-6">
       <p className="mx-auto max-w-4xl">
         Live departures & disruptions:{" "}
         <a

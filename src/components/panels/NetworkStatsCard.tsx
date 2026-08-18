@@ -28,13 +28,13 @@ export function NetworkStatsCard({ trainsRunning, linesActive, stationCount, dis
   return (
     <Card className="relative overflow-hidden border-t-2 border-border border-t-sky-400 bg-card/60 py-4 backdrop-blur-sm dark:border-t-foreground/60 dark:bg-card/80">
       <CardContent className="px-4">
-        <p className="mb-3 text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">Live network stats</p>
+        <p className="type-label mb-3 text-muted-foreground">Live network stats</p>
         <div className="grid grid-cols-2 gap-3">
           {stats.map((stat) => (
             <div key={stat.label} className="flex flex-col items-center gap-1 rounded-lg border border-border/60 bg-background/40 py-3 text-center dark:bg-background/70">
               {stat.icon}
-              <span className="font-mono text-xl font-semibold tracking-tight text-foreground">{stat.value.toLocaleString()}</span>
-              <span className="text-[10.5px] text-muted-foreground">{stat.label}</span>
+              <span className="type-data text-xl font-semibold tracking-tight text-foreground">{stat.value.toLocaleString()}</span>
+              <span className="text-[11px] text-muted-foreground">{stat.label}</span>
             </div>
           ))}
         </div>

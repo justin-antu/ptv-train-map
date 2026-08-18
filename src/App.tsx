@@ -4,6 +4,7 @@ import { Footer } from "./components/Footer";
 import { MapView, type MapViewHandle } from "./components/MapView";
 import { LeftPane } from "./components/panels/LeftPane";
 import { LineTimetable } from "./components/panels/LineTimetable";
+import { BorderBeam } from "./components/ui/border-beam";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
@@ -65,7 +66,7 @@ export default function App() {
     return (
       <div className="flex h-dvh items-center justify-center p-8 text-center">
         <div>
-          <h1 className="text-xl font-bold">Something went wrong loading the map</h1>
+          <h1 className="type-heading text-xl">Something went wrong loading the map</h1>
           <p className="mt-2 text-sm text-muted-foreground">{staticDataError.message}</p>
         </div>
       </div>
@@ -106,7 +107,7 @@ export default function App() {
           </aside>
 
           <main
-            className="relative order-1 h-[58vh] min-h-[340px] lg:order-none lg:h-full lg:min-h-0"
+            className="relative isolate order-1 h-[58vh] min-h-[340px] overflow-hidden lg:order-none lg:h-full lg:min-h-0"
             aria-label={`${NETWORK_SUBTITLE} live map`}
           >
             <MapView
@@ -119,6 +120,14 @@ export default function App() {
               onStationSelect={handleStationSelect}
               onTrainSelect={handleTrainSelect}
               onBackgroundClick={handleBackgroundClick}
+            />
+            <BorderBeam
+              size={140}
+              duration={10}
+              borderWidth={1}
+              colorFrom="rgba(148, 163, 184, 0.3)"
+              colorTo="rgba(0, 114, 206, 0.82)"
+              className="opacity-70 dark:opacity-60"
             />
           </main>
 
