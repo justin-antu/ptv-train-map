@@ -438,6 +438,10 @@ function buildDirection(
 export function validateTimetable(data: NetworkTimetableData): void {
   if (data.schemaVersion !== 1 || data.timezone !== MELBOURNE_TIMEZONE) throw new Error("Invalid timetable metadata");
   if (data.availableDates.length !== 8 || new Set(data.availableDates).size !== 8) throw new Error("Expected eight unique dates");
+  if (data.source.partial !== false) {
+    const warningSummary = data.source.warnings.length > 0 ? `: ${data.source.warnings.join("; ")}` : "";
+    throw new Error(`Refusing to publish a partial timetable${warningSummary}`);
+  }
   if (data.lines.length === 0) throw new Error("Timetable contains no lines");
   for (const line of data.lines) {
     if (!line.id || line.directions.length === 0) throw new Error(`Line ${line.name || "(unknown)"} has no directions`);
@@ -553,8 +557,9 @@ export async function generateTimetable(options: GenerateTimetableOptions): Prom
 
 export async function writeTimetableAtomically(data: NetworkTimetableData, outputPath: string): Promise<void> {
   const temporaryPath = `${outputPath}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(data)}\n`, "utf8");
   try {
+    validateTimetable(data);
+    await writeFile(temporaryPath, `${JSON.stringify(data)}\n`, "utf8");
     await rename(temporaryPath, outputPath);
   } catch (error) {
     await rm(temporaryPath, { force: true });

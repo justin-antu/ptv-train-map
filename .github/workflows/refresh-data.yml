@@ -67,8 +67,7 @@ jobs:
               if ! git diff --quiet -- public/data/network-live.json; then
                 git add public/data/network-live.json
                 git commit -m "chore(data): refresh live Metro Trains Melbourne departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-                git pull --rebase --autostash
-                git push
+                bash scripts/push-generated-data.sh
                 changed=true
               else
                 echo "No change in live data snapshot; skipping commit."

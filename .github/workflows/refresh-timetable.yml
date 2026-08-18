@@ -53,6 +53,17 @@ jobs:
         id: commit
         run: |
           set -euo pipefail
+          # Block publication if generator validation ever regresses.
+          node <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const path = "public/data/network-timetable.json";
+          const timetable = JSON.parse(readFileSync(path, "utf8"));
+          if (timetable?.source?.partial !== false) {
+            console.error(`::error::Refusing to commit ${path}: source.partial must be explicitly false.`);
+            process.exit(1);
+          }
+          NODE
+
           if git diff --quiet -- public/data/network-timetable.json; then
             echo "No timetable change; skipping commit."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -62,8 +73,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/data/network-timetable.json
           git commit -m "chore(data): refresh scheduled Metro timetable ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-          git pull --rebase --autostash
-          git push
+          bash scripts/push-generated-data.sh
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Trigger Pages deploy for new timetable
