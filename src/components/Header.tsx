@@ -1,8 +1,10 @@
 import { memo } from "react";
-import { AnimatedThemeToggler } from "./ui/animated-theme-toggler";
-import { NumberTicker } from "./ui/number-ticker";
+import { APP_TITLE } from "../config";
 import type { Theme } from "../hooks/useTheme";
 import { cn } from "../lib/utils";
+import { AnimatedThemeToggler } from "./ui/animated-theme-toggler";
+import { NumberTicker } from "./ui/number-ticker";
+import { TextAnimate } from "./ui/text-animate";
 
 interface HeaderProps {
   theme: Theme;
@@ -20,7 +22,12 @@ export const Header = memo(function Header({ theme, onThemeChange, isDemo, gener
           🚆
         </span>
         <div className="min-w-0">
-          <h1 className="truncate text-sm leading-tight font-extrabold sm:text-base">Dude, where&apos;s my train?</h1>
+          <TextAnimate
+            className="truncate text-sm leading-tight font-extrabold transition-opacity duration-200 hover:opacity-75 motion-reduce:transition-none motion-reduce:hover:opacity-100 sm:text-base"
+            duration={0.28}
+          >
+            {APP_TITLE}
+          </TextAnimate>
           <p className="truncate text-[10.5px] text-muted-foreground">Metro Trains Melbourne · live network map</p>
         </div>
       </div>
