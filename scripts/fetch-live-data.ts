@@ -3,35 +3,27 @@
  * in-scope Metro Trains Melbourne line (see scripts/lib/lines.ts) and writes
  * a compact combined snapshot to public/data/network-live.json.
  *
- * Run by the `.github/workflows/refresh-data.yml` scheduled workflow (which
- * loops this a few times per run, a bit apart, and commits the result each
- * time — see that workflow file for the freshness strategy). Can also be run
- * locally for testing against a real PTV Timetable API key:
+ * The `.github/workflows/refresh-data.yml` schedule runs this command multiple
+ * times per job and commits each changed snapshot. Local usage:
  *
  *   PTV_DEV_ID=... PTV_API_KEY=... npm run fetch:live-data
  *
- * The exact request/response shapes used here (route_type=0 for train, the
+ * The request and response shapes (route_type=0 for train, the
  * /v3/routes, /v3/stops/route/{id}/route_type/{type},
  * /v3/departures/route_type/{type}/stop/{id}/route/{id}, and
  * /v3/disruptions/route/{id} endpoints, and field names like
  * estimated_departure_utc/scheduled_departure_utc and disruption_id/title/
- * disruption_type) were verified against the live Swagger docs and confirmed
- * end-to-end against the real API with real credentials.
+ * disruption_type) match the live Swagger documentation and API responses.
  *
- * Scale note: with 16 lines and ~280 (line, station) pairs across the whole
- * network, fetching departures one-by-one would take a while — requests are
- * therefore issued with bounded concurrency (see scripts/lib/concurrency.ts)
- * rather than either fully sequential or fully unbounded-parallel. Disruptions
- * add only ~16 more requests (one per line), fetched concurrently alongside
- * the departure jobs rather than adding a separate sequential phase.
+ * Bounded concurrency limits load while processing approximately 280
+ * line/station departure requests. The 16 disruption requests run concurrently
+ * with departure jobs.
  */
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-// Load .env for local runs (e.g. `npm run fetch:live-data`). In CI, the
-// refresh-data workflow sets PTV_DEV_ID/PTV_API_KEY directly as real env
-// vars via GitHub secrets, so there's no .env file there — skip silently.
+// Local runs load credentials from `.env`. CI injects repository secrets.
 const dotEnvPath = path.resolve(".env");
 if (existsSync(dotEnvPath)) {
   process.loadEnvFile(dotEnvPath);
@@ -51,13 +43,8 @@ import type { LineDisruption, LiveRun, LiveRunStop, LiveSnapshot, NetworkStaticD
 
 const STATIC_DATA_PATH = path.resolve("public/data/network-static.json");
 const OUTPUT_PATH = path.resolve("public/data/network-live.json");
-// Deliberately deeper than earlier single-line versions of this script (6):
-// the trip planner and the favourite-station board both need to find a
-// specific *other* station within the same run's fetched stop list, which
-// only works if the window is long enough to plausibly span the distance
-// between two stations on a line (or two legs of a one-interchange trip).
-// This costs nothing extra request-wise (still one request per (line, stop)
-// pair) — only a larger, still-small JSON payload per request.
+// Twelve results provide enough run context to connect stations across longer
+// direct and one-interchange journeys without increasing the request count.
 const MAX_RESULTS_PER_STOP = Number(process.env.MAX_RESULTS_PER_STOP ?? 12);
 const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY ?? 8);
 
@@ -127,6 +114,7 @@ function toLineDisruption(d: PtvDisruption): LineDisruption {
     title: d.title,
     url: d.url,
     disruptionType: d.disruption_type,
+    disruptionStatus: d.disruption_status,
     fromDateUtc: d.from_date,
     toDateUtc: d.to_date,
   };
@@ -135,9 +123,8 @@ function toLineDisruption(d: PtvDisruption): LineDisruption {
 /**
  * Fetches current disruptions for every line with a resolved route_id, one
  * request per line (~16 total — negligible next to the ~280 departure
- * requests below). A disruption can list multiple routes (e.g. a Flinders
- * Street / City Loop disruption affecting many lines at once); we dedupe by
- * disruption_id per line rather than assuming a 1:1 disruption-to-line mapping.
+ * requests below). A disruption can list multiple routes, so results are
+ * deduplicated by disruption_id per line.
  */
 async function fetchDisruptionsByLine(
   lines: { id: string; name: string; routeId: number | undefined }[],

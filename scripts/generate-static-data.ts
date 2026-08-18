@@ -1,12 +1,10 @@
 /**
  * Regenerates public/data/network-static.json from the static Melbourne GTFS
  * schedule feed, for every in-scope Metro Trains Melbourne line (see
- * scripts/lib/lines.ts — V/Line is out of scope and never touched).
+ * scripts/lib/lines.ts). V/Line data is excluded.
  *
- * This only needs to be re-run when PTV significantly changes a line's
- * stations or alignment (rare) — the resulting JSON is committed to the
- * repo so the app never needs to re-download/re-process the (~250MB) GTFS
- * feed at build or runtime.
+ * Regenerate after station or alignment changes. The committed artifact avoids
+ * downloading and processing the approximately 250 MB feed at build or runtime.
  *
  * Usage:
  *   1. Download the Victorian GTFS schedule zip from
@@ -14,14 +12,13 @@
  *      (direct link at the time of writing:
  *      https://opendata.transport.vic.gov.au/dataset/3f4e292e-7f8a-4ffe-831f-1953be0fe448/resource/fb152201-859f-4882-9206-b768060b50ad/download/gtfs.zip)
  *   2. Unzip it, then unzip folder "2" (the "Metropolitan Train" operational
- *      branch)'s google_transit.zip into some directory, e.g. gtfs-download/metro-train/
+ *      branch)'s google_transit.zip into a directory such as gtfs-download/metro-train/
  *   3. Run: GTFS_DIR=gtfs-download/metro-train npm run generate:static-data
  *      (GTFS_DIR defaults to gtfs-download/metro-train if not set)
  *
- * Performance note: shapes.txt and stop_times.txt are ~50-90MB each. To keep
- * this fast regardless of the number of in-scope lines, every GTFS file is
- * streamed exactly ONCE across all 16 lines (not once per line) — see the
- * staged pipeline in main().
+ * shapes.txt and stop_times.txt are approximately 50–90 MB each. Every GTFS
+ * file is streamed once across all lines to keep processing proportional to
+ * feed size rather than line count.
  */
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -90,7 +87,7 @@ async function loadTripsPerRoute(routeIds: Set<string>): Promise<Map<string, Map
   return perRoute;
 }
 
-/** Pass 4: stop_times.txt (the ~52MB file) — one streamed pass, filtered to only the trip_ids we actually need. */
+/** Pass 4: stream stop_times.txt once and retain required trip IDs. */
 async function loadStopTimesForTrips(neededTripIds: Set<string>): Promise<Map<string, StopTimeEntry[]>> {
   const tripStops = new Map<string, StopTimeEntry[]>();
   await streamCsv(path.join(GTFS_DIR, "stop_times.txt"), (row) => {
@@ -102,7 +99,7 @@ async function loadStopTimesForTrips(neededTripIds: Set<string>): Promise<Map<st
   return tripStops;
 }
 
-/** Pass 5: shapes.txt (the ~88MB file) — one streamed pass, filtered to only the shape_ids we actually need (one per line). */
+/** Pass 5: stream shapes.txt once and retain the selected shape for each line. */
 async function loadShapesById(neededShapeIds: Set<string>): Promise<Map<string, [number, number][]>> {
   const rawPoints = new Map<string, { lat: number; lon: number; sequence: number }[]>();
   await streamCsv(path.join(GTFS_DIR, "shapes.txt"), (row) => {
@@ -124,30 +121,15 @@ async function loadShapesById(neededShapeIds: Set<string>): Promise<Map<string, 
 }
 
 /**
- * Some services on a line run via the underground City Loop (e.g. for an
- * eastern/Burnley-group line: Flinders Street -> Southern Cross -> Flagstaff ->
- * Melbourne Central -> Parliament -> Richmond -> ...), while most run the
- * direct way. The official PTV network map (and this app) represents each
- * line as its direct alignment — the loop stations are shared infrastructure
- * used by many lines, not specific to any one of them. So among full-length
- * trips for a line, we pick the longest one that *excludes* those loop-only
- * stations, falling back to the overall longest trip (loop included) if a
- * line genuinely has no non-loop variant.
+ * The map represents each line with its primary direct alignment. Select the
+ * longest trip that excludes City Loop-only stations, falling back to the
+ * longest overall trip when no direct variant exists.
  *
- * Deliberately only Flagstaff / Melbourne Central / Parliament — these three
- * underground stations are *never* on any line's direct/surface alignment, so
- * their presence is an unambiguous "this trip went via the loop" signal.
- * Southern Cross is intentionally excluded from this pattern: unlike the other
- * three, it's a legitimate surface station on several lines' direct alignments
- * (Craigieburn, Upfield, Sunbury, Werribee, Williamstown all call at Southern
- * Cross without going anywhere near the underground loop), so treating it as
- * loop-only would incorrectly disqualify those lines' real direct trips.
+ * Flagstaff, Melbourne Central, and Parliament identify City Loop variants.
+ * Southern Cross is excluded because it belongs to several direct alignments.
  *
- * Note: this deliberately does NOT try to exclude the newer Metro Tunnel
- * stations (Anzac / Domain / Town Hall / State Library / Arden) for the
- * Sunbury/Cranbourne/Pakenham lines — post-tunnel, that tunnel corridor *is*
- * each of those lines' real, primary city alignment (there's no separate
- * "direct" alternative to prefer instead), unlike the legacy City Loop.
+ * Metro Tunnel stations remain part of the primary alignment for the Sunbury,
+ * Cranbourne, and Pakenham lines.
  */
 const CITY_LOOP_ONLY_STOP_NAME_PATTERN = /flagstaff|melbourne central|parliament/i;
 
@@ -210,7 +192,7 @@ async function main() {
 
   for (const lineName of IN_SCOPE_LINE_NAMES) {
     const routeInfo = routeInfoByName.get(lineName);
-    if (!routeInfo) continue; // unreachable given the earlier missing-lines check, but keeps TS happy
+    if (!routeInfo) continue; // Guard retained for type narrowing after validation.
     const tripShapeId = tripsPerRoute.get(routeInfo.routeId)!;
 
     const { tripId, stops: bestStops } = findCanonicalTripStops(tripShapeId.keys(), tripStops, allStops, lineName);

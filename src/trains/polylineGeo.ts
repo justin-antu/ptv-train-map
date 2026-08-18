@@ -1,7 +1,6 @@
 /**
- * Small geo helpers used to interpolate train positions *along the actual track
- * shape* (the committed route polyline) rather than in a straight line between
- * two stations, which would cut corners on curvy sections of the line.
+ * Geometry helpers for interpolating train positions along committed route
+ * polylines.
  */
 
 type LonLat = [number, number];
@@ -35,17 +34,10 @@ export function cumulativeDistances(polyline: LonLat[]): number[] {
  * Finds how far along the polyline (in metres from the start) the nearest point
  * to `target` is.
  *
- * This projects `target` onto every *segment* (not just every vertex) and picks
- * the closest projection. Nearest-vertex-only matching was tried first and is
- * usually fine given how fine-grained GTFS shape points normally are, but a
- * handful of real segments in this network's shape data are much coarser
- * (multi-kilometre gaps between consecutive shape points on some outer sections,
- * e.g. Craigieburn-Roxburgh Park, Pakenham-Cardinia Road, Cranbourne-Merinda
- * Park, and the Stony Point branch) — for those, snapping a station to its
- * nearest *vertex* can be off by up to ~half that segment's length, which then
- * shows up as trains cutting a visible corner off the real track. Projecting
- * onto the nearest segment (using a flat-plane approximation for the local
- * projection, which is accurate enough at these distances) fixes that.
+ * Projects onto every segment rather than only vertices. Some outer-network
+ * GTFS shapes contain multi-kilometre vertex gaps, where vertex-only matching
+ * visibly displaces stations and train paths. A local flat-plane projection is
+ * sufficiently accurate at this scale.
  */
 export function nearestDistanceAlong(polyline: LonLat[], cumDist: number[], target: LonLat): number {
   if (polyline.length === 1) return 0;

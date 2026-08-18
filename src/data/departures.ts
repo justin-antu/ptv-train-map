@@ -6,6 +6,7 @@ export interface UpcomingStop {
   runRef: string;
   timeUtc: string;
   scheduledTimeUtc: string;
+  isEstimate: boolean;
   /** Minutes late (0 or negative = on time/early), derived from timeUtc - scheduledTimeUtc. */
   delayMin: number;
 }
@@ -13,10 +14,8 @@ export interface UpcomingStop {
 /**
  * Minutes late (0 or negative = on time/early) derived from a stop's
  * `timeUtc - scheduledTimeUtc`. Falls back to 0 (treated as on-time) if
- * either timestamp is missing or unparsable, rather than propagating `NaN`
- * into the UI — real-world live snapshots occasionally lack one of these
- * fields (e.g. an older/partial data snapshot), and that should never be
- * allowed to surface as a "+NaN min" badge.
+ * either timestamp is missing or unparsable, preventing `NaN` delay badges
+ * from partial live snapshots.
  */
 export function delayMinutesFor(stop: { timeUtc: string; scheduledTimeUtc: string }): number {
   const t = Date.parse(stop.timeUtc);
@@ -26,26 +25,26 @@ export function delayMinutesFor(stop: { timeUtc: string; scheduledTimeUtc: strin
 }
 
 /**
- * Every still-upcoming predicted stop at `station`, across every line that
- * serves it, sorted soonest first. This is the single source of truth for
- * "what's coming up at this station" — used both by the station info card
- * (which further reduces it to one row per line) and the favourite-station
- * departure board (which shows the next few overall, like a real platform
- * display, without deduping by line).
+ * Returns upcoming predicted stops at `station`, sorted chronologically.
+ * Station cards reduce the result per line; the favourite board retains the
+ * next stops across all lines.
  */
 export function upcomingStopsForStation(station: StationStatic, runs: LiveRun[], now: number): UpcomingStop[] {
   const results: UpcomingStop[] = [];
   for (const run of runs) {
-    if (!station.lineIds.includes(run.lineId)) continue;
+    // Match the exact stop carried by live data rather than pre-filtering by
+    // StationStatic.lineIds. That static list can lag route changes (notably
+    // Metro Tunnel services), while a run containing this stop is definitive.
     for (const stop of run.stops) {
       if (stop.stationId !== station.id) continue;
       const t = Date.parse(stop.timeUtc);
-      if (t < now) continue;
+      if (!Number.isFinite(t) || t < now) continue;
       results.push({
         lineId: run.lineId,
         runRef: run.runRef,
         timeUtc: stop.timeUtc,
         scheduledTimeUtc: stop.scheduledTimeUtc,
+        isEstimate: stop.isEstimate,
         delayMin: delayMinutesFor(stop),
       });
     }

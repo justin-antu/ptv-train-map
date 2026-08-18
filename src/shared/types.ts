@@ -86,6 +86,8 @@ export interface LineDisruption {
   url: string | null;
   /** PTV's own disruption_type label, e.g. "Planned Works", "Station detour". */
   disruptionType: string;
+  /** PTV's lifecycle status when supplied by the current snapshot, e.g. "Current". */
+  disruptionStatus?: string;
   /** ISO 8601 UTC start time, if known. */
   fromDateUtc: string | null;
   /** ISO 8601 UTC end time, if known (open-ended disruptions have no end date yet). */
@@ -106,4 +108,46 @@ export interface LiveSnapshot {
    * to keep the committed JSON lean.
    */
   disruptionsByLine?: Record<string, LineDisruption[]>;
+}
+
+/** A compact scheduled service. Times are minutes after the Melbourne service-day midnight; values >= 1440 cross midnight. */
+export interface TimetableService {
+  id: string;
+  destination: string;
+  origin: string;
+  /** Bit N means this service operates on availableDates[N] (eight dates maximum). */
+  dateMask: number;
+  /** One value per direction.stationIds entry; null means this service skips/does not use that station. */
+  times: (number | null)[];
+}
+
+export interface TimetableDirection {
+  id: string;
+  label: string;
+  stationIds: string[];
+  stationNames: string[];
+  /** Services are stored once and selected by dateMask to avoid repeating weekday schedules. */
+  services: TimetableService[];
+}
+
+export interface TimetableLine {
+  id: string;
+  name: string;
+  color: string;
+  directions: TimetableDirection[];
+}
+
+export interface NetworkTimetableData {
+  schemaVersion: 1;
+  generatedAtUtc: string;
+  timezone: "Australia/Melbourne";
+  availableDates: string[];
+  source: {
+    schedule: "Victorian GTFS Schedule";
+    ptvRouteMetadata: "verified" | "not-verified";
+    ptvVerifiedAtUtc: string | null;
+    partial: boolean;
+    warnings: string[];
+  };
+  lines: TimetableLine[];
 }

@@ -1,0 +1,244 @@
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 225 66% 24%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 220 20% 95%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 220 20% 95%;
+  --muted-foreground: 220 9% 42%;
+  --accent: 220 25% 93%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 220 15% 88%;
+  --input: 220 15% 88%;
+  --ring: 225 66% 24%;
+  --warning: 32 81% 31%;
+  --warning-foreground: 32 81% 31%;
+  --warning-surface: 48 100% 96%;
+  --warning-muted: 48 96% 89%;
+  --warning-border: 46 97% 65%;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 98%;
+  --card: 240 6% 10%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 6% 10%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 10% 4%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 72% 58%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 4% 26%;
+  --input: 240 4% 32%;
+  --ring: 240 5% 84%;
+  --warning: 45 93% 47%;
+  --warning-foreground: 48 96% 77%;
+  --warning-surface: 240 6% 10%;
+  --warning-muted: 240 4% 16%;
+  --warning-border: 32 81% 29%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    @apply h-full w-full m-0 p-0;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    font-weight: 400;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    font-synthesis-weight: none;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+  input::placeholder {
+    opacity: 0.78;
+  }
+}
+
+@layer components {
+  .type-heading {
+    @apply font-semibold tracking-tight;
+  }
+
+  .type-label {
+    @apply text-[11px] font-medium tracking-wide uppercase;
+  }
+
+  .type-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .type-numeric {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Static background treatment for side panes. */
+.side-pane-grid {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.12) 0.8px, transparent 0.9px);
+  background-position: 0 0;
+  background-size: 18px 18px;
+}
+
+.dark .side-pane-grid {
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.16) 0.8px, transparent 0.9px);
+}
+
+/*
+ * MapLibre renders its own marker/popup DOM outside of React's control, so
+ * these selectors target MapLibre classes and imperative marker elements.
+ */
+.info-popup .maplibregl-popup-content {
+  padding: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  font-family: inherit;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+}
+
+.info-popup .maplibregl-popup-tip {
+  border-top-color: hsl(var(--popover));
+  border-bottom-color: hsl(var(--popover));
+}
+
+.info-popup .maplibregl-popup-close-button {
+  font-size: 16px;
+  color: hsl(var(--muted-foreground));
+  padding: 4px 8px;
+  right: 2px;
+  top: 2px;
+}
+
+.info-popup .maplibregl-popup-close-button:hover {
+  color: hsl(var(--foreground));
+  background: none;
+}
+
+.maplibregl-ctrl-top-right {
+  top: env(safe-area-inset-top, 0);
+}
+
+.train-marker {
+  /* Absolute positioning keeps MapLibre's translate transform relative to the
+   * map container origin. */
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  cursor: default;
+}
+
+.train-marker-dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.train-marker--delayed .train-marker-dot {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 2px #f4a300;
+  animation: train-delayed-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes train-delayed-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 0 0 2px #f4a300;
+  }
+  50% {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 0 0 4px rgba(244, 163, 0, 0.55);
+  }
+}
+
+.train-marker-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.15s ease-out;
+}
+
+/* Theme-aware panel scrollbars for WebKit and Firefox. */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+  border-radius: 999px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

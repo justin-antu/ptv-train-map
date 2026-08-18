@@ -1,12 +1,12 @@
 import maplibregl from "maplibre-gl";
 import type { TrainPosition } from "./interpolate";
 
-/** Minutes late before a train is visually flagged as delayed — small (1-2 min) prediction jitter is normal and not worth flagging. */
+/** Delay threshold that excludes normal one-to-two-minute prediction jitter. */
 const DELAYED_THRESHOLD_MIN = 3;
 
 interface TrackedMarker {
   marker: maplibregl.Marker;
-  /** Kept in sync every update() so the click handler (bound once, at creation) always reports the current position. */
+  /** Current position read by the marker's persistent click handler. */
   position: TrainPosition;
 }
 
@@ -24,11 +24,8 @@ export class TrainMarkerLayer {
     const seen = new Set<string>();
 
     for (const pos of positions) {
-      // Keyed by lineId+runRef, not runRef alone: PTV's run_ref values are not
-      // documented as globally unique across different routes/lines, so two
-      // unrelated trains on different lines could in principle share the same
-      // run_ref. Keying by runRef alone would then make them alias to a single
-      // marker that flickers between both lines' (unrelated) positions.
+      // PTV does not document run_ref as globally unique. Include lineId to
+      // prevent unrelated runs on different lines from sharing one marker.
       const key = `${pos.lineId}:${pos.runRef}`;
       seen.add(key);
       let tracked = this.markers.get(key);
@@ -44,23 +41,26 @@ export class TrainMarkerLayer {
         this.markers.set(key, created);
         tracked = created;
 
-        // Bound once per marker element (not per update()): reads `created.position`
-        // at click time, which update() below keeps current every frame, so this
-        // always reports wherever the train actually is *now*, not where it was
-        // when the listener was attached.
+        // Bind once and read the position object updated by each frame.
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           this.onTrainClick?.(created.position);
         });
       }
+      // Skip marker reprojection and style writes while position and delay are
+      // unchanged.
+      const prev = tracked.position;
+      const unchanged = prev.lon === pos.lon && prev.lat === pos.lat && prev.delayMin === pos.delayMin;
       tracked.position = pos;
-      const el = tracked.marker.getElement();
-      const delayed = pos.delayMin >= DELAYED_THRESHOLD_MIN;
-      el.title = delayed ? `To ${pos.destinationName} (+${pos.delayMin} min late)` : `To ${pos.destinationName}`;
-      el.classList.toggle("train-marker--delayed", delayed);
-      const dot = el.querySelector<HTMLElement>(".train-marker-dot");
-      if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
-      tracked.marker.setLngLat([pos.lon, pos.lat]);
+      if (!unchanged) {
+        const el = tracked.marker.getElement();
+        const delayed = pos.delayMin >= DELAYED_THRESHOLD_MIN;
+        el.title = delayed ? `To ${pos.destinationName} (+${pos.delayMin} min late)` : `To ${pos.destinationName}`;
+        el.classList.toggle("train-marker--delayed", delayed);
+        const dot = el.querySelector<HTMLElement>(".train-marker-dot");
+        if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
+        tracked.marker.setLngLat([pos.lon, pos.lat]);
+      }
     }
 
     for (const [key, tracked] of this.markers) {
