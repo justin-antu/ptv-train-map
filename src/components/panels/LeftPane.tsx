@@ -43,36 +43,38 @@ export function LeftPane({
   const favouriteStation = favourite.favouriteId ? stationsById.get(favourite.favouriteId) : undefined;
 
   return (
-    <div className="grid grid-cols-1 gap-3">
-      <SearchCard
-        stations={staticData.stations}
-        onSelect={(station) => {
-          visibleLines.ensureVisible(station.lineIds);
-          onStationSearchSelect(station);
-        }}
-      />
+    <div className="grid grid-cols-1 gap-3 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+      <div className="grid shrink-0 grid-cols-1 gap-3">
+        <SearchCard
+          stations={staticData.stations}
+          onSelect={(station) => {
+            visibleLines.ensureVisible(station.lineIds);
+            onStationSearchSelect(station);
+          }}
+        />
 
-      <SelectedInfoCard
-        selection={selection}
-        stationsById={stationsById}
-        lineNameById={lineNameById}
-        lineColorById={lineColorById}
-        runs={runs}
-        favourite={favourite}
-        onClose={onClearSelection}
-      />
-
-      {favouriteStation && (
-        <FavouriteCard
-          favourite={favourite}
-          station={favouriteStation}
-          runs={runs}
+        <SelectedInfoCard
+          selection={selection}
+          stationsById={stationsById}
           lineNameById={lineNameById}
           lineColorById={lineColorById}
-          notifications={notifications}
-          onStationClick={() => onFavouriteStationClick(favouriteStation)}
+          runs={runs}
+          favourite={favourite}
+          onClose={onClearSelection}
         />
-      )}
+
+        {favouriteStation && (
+          <FavouriteCard
+            favourite={favourite}
+            station={favouriteStation}
+            runs={runs}
+            lineNameById={lineNameById}
+            lineColorById={lineColorById}
+            notifications={notifications}
+            onStationClick={() => onFavouriteStationClick(favouriteStation)}
+          />
+        )}
+      </div>
 
       <LegendCard
         lines={staticData.lines.map((l) => ({ id: l.id, name: l.name, color: l.color }))}

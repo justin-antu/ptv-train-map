@@ -3,7 +3,6 @@ import { AlertTriangle, ChevronDown, ExternalLink } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
-import { ScrollArea } from "../ui/scroll-area";
 import type { LineDisruption } from "../../shared/types";
 import type { VisibleLinesController } from "../../hooks/useVisibleLines";
 import { cn } from "../../lib/utils";
@@ -53,7 +52,7 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
         setOpen(next);
         saveCollapsed(!next);
       }}
-      className="relative overflow-hidden rounded-xl border border-t-2 border-border border-t-primary bg-card/80 shadow-sm backdrop-blur-sm"
+      className="relative overflow-hidden rounded-xl border border-t-2 border-border border-t-primary bg-card/80 shadow-sm backdrop-blur-sm data-[state=open]:flex data-[state=open]:max-h-[75dvh] data-[state=open]:min-h-11 data-[state=open]:flex-col lg:data-[state=open]:max-h-none lg:data-[state=open]:min-h-0 lg:data-[state=open]:flex-1"
     >
       <CollapsibleTrigger asChild>
         <button
@@ -64,8 +63,8 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
           <ChevronDown className={cn("size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-        <div className="flex items-center gap-2 px-4 pb-2">
+      <CollapsibleContent className="min-h-0 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:flex data-[state=open]:flex-1 data-[state=open]:flex-col data-[state=open]:animate-collapsible-down">
+        <div className="flex shrink-0 items-center gap-2 px-4 pb-2">
           <Button size="sm" variant="secondary" className="h-6 rounded-full px-3 text-[11px]" onClick={visibleLines.showAll}>
             All
           </Button>
@@ -73,7 +72,7 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
             None
           </Button>
         </div>
-        <ScrollArea className="max-h-[30rem]">
+        <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
           <div className="space-y-0.5 px-3 pb-3">
             {lines.map((line) => {
               const disruptions = [...new Map((disruptionsByLine[line.id] ?? []).map((disruption) => [disruption.id, disruption])).values()];
@@ -153,7 +152,7 @@ export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCar
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
