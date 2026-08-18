@@ -13,11 +13,7 @@ function loadInitialTheme(): Theme {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     if (stored === "light" || stored === "dark") return stored;
   } catch {
-    // Storage disabled/inaccessible — fall through to system preference.
-  }
-  // No stored preference yet: honour the OS/browser preference on first visit.
-  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
-    return "dark";
+    // Storage disabled/inaccessible — use the default theme.
   }
   return "light";
 }
