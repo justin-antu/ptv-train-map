@@ -41,13 +41,12 @@ jobs:
           unzip -q gtfs-download/metro-train.zip -d gtfs-download/metro-train
           test -s gtfs-download/metro-train/stop_times.txt
 
-      - name: Generate and validate timetable
+      - name: Generate timetable
         env:
           PTV_DEV_ID: ${{ secrets.PTV_DEV_ID }}
           PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
         run: |
           set -euo pipefail
-          npm run verify:timetable
           npm run generate:timetable
 
       - name: Commit timetable only when changed

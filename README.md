@@ -151,7 +151,6 @@ npm run typecheck              # Run TypeScript without emitting files
 npm run fetch:live-data        # Refresh public/data/network-live.json
 npm run generate:static-data   # Regenerate static network data from GTFS_DIR
 npm run generate:timetable     # Generate eight Melbourne dates from GTFS_DIR
-npm run verify:timetable       # Verify timetable transformations and invariants
 ```
 
 `GTFS_DIR` defaults to `gtfs-download/metro-train`. Static and timetable generation require the extracted Metropolitan Train GTFS files.

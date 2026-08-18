@@ -20,8 +20,6 @@
  * signature that is internally inconsistent, as independently reproduced in a 2014
  * StackOverflow thread: https://stackoverflow.com/questions/22340119). The
  * documented algorithm is consistent with independent open-source PTV clients.
- * ptvClient.test.ts validates against an independent reference implementation
- * instead of the inconsistent example.
  */
 import { createHmac } from "node:crypto";
 
