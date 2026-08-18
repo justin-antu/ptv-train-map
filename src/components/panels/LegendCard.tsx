@@ -39,10 +39,8 @@ interface LegendCardProps {
 }
 
 /**
- * Collapsible show/hide-per-line legend, restyled as a bento-style card.
- * Both the per-line visibility selection (`useVisibleLines`) and this
- * card's own collapsed/expanded state persist across visits, matching the
- * original vanilla implementation's behaviour.
+ * Collapsible line-visibility legend. Line selections and collapsed state
+ * persist across visits.
  */
 export function LegendCard({ lines, visibleLines, disruptionsByLine }: LegendCardProps) {
   const [open, setOpen] = useState(() => !loadCollapsed());

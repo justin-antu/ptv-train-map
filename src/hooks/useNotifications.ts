@@ -3,7 +3,7 @@ import type { LiveRun, StationStatic } from "../shared/types";
 import { upcomingStopsForStation } from "../data/departures";
 
 const NOTIFY_STORAGE_KEY = "wimt:notifyEnabled";
-/** How soon before a train's predicted arrival we fire a notification, per the spec's "~2 minutes". */
+/** Notification lead time before a train's predicted arrival. */
 const NOTIFY_THRESHOLD_MS = 2 * 60_000;
 
 function loadNotifyEnabled(): boolean {
@@ -25,7 +25,7 @@ function saveNotifyEnabled(enabled: boolean): void {
 export interface NotificationsController {
   enabled: boolean;
   message: string;
-  /** Only ever called from a direct user gesture (the toggle's own click) — never automatically. */
+  /** Must be called from the notification toggle's direct user gesture. */
   toggle(): Promise<void>;
 }
 
@@ -33,8 +33,7 @@ export interface NotificationsController {
  * Fires an opt-in browser notification when the favourite station's soonest
  * train is within `NOTIFY_THRESHOLD_MS`. Notifications are strictly opt-in:
  * `Notification.requestPermission()` is only ever called from `toggle()`,
- * which callers must only invoke from a direct user gesture on the toggle
- * control itself, never automatically on load.
+ * which must only be invoked by the toggle control's direct user gesture.
  */
 export function useNotifications(
   favouriteId: string | null,
@@ -53,8 +52,7 @@ export function useNotifications(
   }, [favouriteId]);
 
   useEffect(() => {
-    // Passively reflect reality (e.g. the user revoked the permission in
-    // browser settings since last visit) rather than re-prompting.
+    // Reflect revoked browser permission without prompting again.
     const granted = typeof Notification !== "undefined" && Notification.permission === "granted";
     if (enabled && !granted) {
       setEnabled(false);
@@ -99,7 +97,7 @@ export function useNotifications(
       setMessage("Notifications aren't supported in this browser.");
       return;
     }
-    // Only ever requested here, in direct response to the toggle's own click — never on page load.
+    // Browser permission requests require the toggle's direct user gesture.
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       setEnabled(false);

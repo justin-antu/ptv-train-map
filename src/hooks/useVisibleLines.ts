@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const VISIBLE_LINES_STORAGE_KEY = "wimt:visibleLineIds";
 
-/** Reads the raw stored line-id list, or `null` if the user has never made an explicit selection yet. */
+/** Returns the stored line IDs, or `null` when no explicit selection exists. */
 function loadStoredIds(): string[] | null {
   try {
     const raw = localStorage.getItem(VISIBLE_LINES_STORAGE_KEY);
@@ -11,7 +11,7 @@ function loadStoredIds(): string[] | null {
       if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === "string");
     }
   } catch {
-    // Malformed/inaccessible storage (corrupted JSON, private-browsing quota, etc.) — fall through to "no preference".
+    // Treat malformed or inaccessible storage as no saved preference.
   }
   return null;
 }
@@ -20,7 +20,7 @@ function saveStoredIds(ids: readonly string[]): void {
   try {
     localStorage.setItem(VISIBLE_LINES_STORAGE_KEY, JSON.stringify(ids));
   } catch {
-    // Ignore write failures (e.g. storage disabled/full) — visibility still works for this session.
+    // Visibility remains available in memory when storage writes fail.
   }
 }
 
@@ -29,26 +29,17 @@ export interface VisibleLinesController {
   toggleLine(lineId: string): void;
   showAll(): void;
   hideAll(): void;
-  /** Ensures every given line id is visible (e.g. from a search result pick), without hiding any others. */
+  /** Adds the supplied line IDs to the visible set without hiding other lines. */
   ensureVisible(lineIds: Iterable<string>): void;
 }
 
 /**
- * Tracks which lines are currently shown on the map, persisted per the
- * legend's show/hide selection.
+ * Tracks and persists the lines shown on the map.
  *
- * `allLineIds` isn't known yet on the very first render (the static
- * line/station data is still loading asynchronously at that point), so we
- * deliberately do NOT bake "default to every line visible" into a one-shot
- * `useState` lazy initializer keyed off `allLineIds` — that pattern only runs
- * once, on mount, and would permanently capture an empty set (since
- * `allLineIds` is `[]` on that very first render), leaving every line hidden
- * for the rest of the session regardless of when data actually finishes
- * loading. Instead, `storedIds` only ever holds an *explicit* user
- * selection (or `null` before one exists), and the effective `visible` set
- * falls back to "all currently known lines" whenever there's no explicit
- * selection yet — recomputed on every render, so it naturally becomes
- * correct as soon as `allLineIds` is populated.
+ * Static data is unavailable during the initial render. `null` therefore
+ * represents the default of all currently known lines, while an array
+ * represents an explicit selection. This prevents the initial empty line list
+ * from becoming a permanent hidden-lines state.
  */
 export function useVisibleLines(allLineIds: readonly string[]): VisibleLinesController {
   const [storedIds, setStoredIds] = useState<string[] | null>(() => loadStoredIds());
@@ -61,8 +52,7 @@ export function useVisibleLines(allLineIds: readonly string[]): VisibleLinesCont
 
   const visible = useMemo(() => {
     if (storedIds === null) return new Set(allLineIds);
-    // Filter against the current line list so a stale/renamed id from an
-    // older version of the app can't leave a permanently-invisible entry.
+    // Remove stale or renamed IDs that are absent from the current line list.
     const known = new Set(allLineIds);
     return new Set(storedIds.filter((id) => known.has(id)));
   }, [storedIds, allLineIds]);

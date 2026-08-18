@@ -2,13 +2,8 @@ import { Activity, AlertTriangle, MapPinned, TrainFront } from "lucide-react";
 import { Card, CardContent } from "../ui/card";
 
 /**
- * Live network stats grid, wired to this app's real live/static data. Lives
- * in the right pane, which was previously just a "coming soon" placeholder.
- *
- * Deliberately static (no per-mount spring/count-up animation, no animated
- * border): the underlying numbers already refresh every ~30s from the live
- * data poll, so a plain, instantly-readable number is both cheaper and more
- * honest than a decorative animation with no functional purpose.
+ * Live network statistics grid. Values update with the 30-second data poll;
+ * static rendering avoids decorative animation on every refresh.
  */
 export interface NetworkStatsCardProps {
   trainsRunning: number;

@@ -39,7 +39,7 @@ const itemVariants: Variants = {
 
 /**
  * A compact adaptation of MagicUI's Text Animate word reveal.
- * Kept deliberately focused for heading text and reduced-motion safety.
+ * Supports heading text and reduced-motion behavior.
  */
 export const TextAnimate = memo(function TextAnimate({
   children,

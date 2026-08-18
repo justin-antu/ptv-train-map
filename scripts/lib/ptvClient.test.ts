@@ -1,14 +1,12 @@
 /**
- * Lightweight regression test for the PTV signing algorithm — no test runner
- * dependency, just plain assertions. Run with: `npx tsx scripts/lib/ptvClient.test.ts`.
+ * Dependency-free regression test for the PTV signing algorithm.
+ * Run with `npx tsx scripts/lib/ptvClient.test.ts`.
  *
- * Since PTV's own documented worked example is internally broken (see the
- * comment in ptvClient.ts), we validate against:
+ * The documented PTV example is internally inconsistent. Validation uses:
  *   1) A second, independently-written implementation of the same documented
  *      algorithm (mirroring github.com/bremor/public_transport_victoria and the
  *      commonly shared "ptv_signature.py" gist), and
- *   2) Fixed hard-coded fixtures, so any future accidental change to the
- *      signing logic in ptvClient.ts is caught.
+ *   2) Fixed fixtures that detect signing changes.
  */
 import { createHmac } from "node:crypto";
 import { signPtvRequest, type PtvCredentials } from "./ptvClient.ts";
@@ -41,7 +39,7 @@ for (const { path, credentials } of cases) {
   }
 }
 
-// Hard fixture: locks in the exact current output so silent regressions are caught.
+// Fixed output fixture for regression detection.
 const fixturePath = "/v3/routes?route_types=0";
 const fixtureCredentials: PtvCredentials = { devId: 1000000, apiKey: "mykey" };
 const fixtureExpected =

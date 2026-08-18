@@ -38,10 +38,8 @@ export default function App() {
   const favouriteStation = favourite.favouriteId ? stationsById.get(favourite.favouriteId) : undefined;
   const notifications = useNotifications(favourite.favouriteId, favouriteStation, live.runs);
 
-  // Trains actually in service right now, not `live.runs.length` — the live
-  // snapshot fetches up to ~12 upcoming departures per station, most of
-  // which are scheduled well into the future, not currently running. Only
-  // recomputed when a fresh snapshot arrives (~every 30s), not per-frame.
+  // Count only runs within the active display window. The snapshot also
+  // contains future departures. Recompute once per live-data refresh.
   const trainsRunningNow = useMemo(
     () => countActiveRuns(live.runs, Date.now(), { staleAfterMs: RUN_STALE_AFTER_MS, showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS }),
     [live.runs],

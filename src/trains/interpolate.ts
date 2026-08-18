@@ -49,9 +49,9 @@ export function buildInterpolationContext(staticData: NetworkStaticData): Interp
 }
 
 export interface InterpolationOptions {
-  /** How long after a run's last known predicted stop we keep showing it there before hiding it. */
+  /** Display grace period after a run's last predicted stop. */
   staleAfterMs: number;
-  /** How long before a run's first known predicted stop we start showing it waiting at that station. */
+  /** Display lead time before a run's first predicted stop. */
   showBeforeFirstStopMs: number;
 }
 
@@ -63,14 +63,9 @@ interface ParsedRunTimes {
 
 /**
  * Caches each run's parsed (epoch-ms) stop times, keyed by the run object
- * itself. `Date.parse()`-ing every stop's ISO timestamp on every call was a
- * real, measurable cost: this is scanned once per animation-loop tick (see
- * `MapView`) across every known run (hundreds, even though only a handful
- * are ever "in progress" at once), so re-parsing from scratch every tick
- * scaled with total schedule size, not with what's actually on screen. A
- * `WeakMap` keyed on the run object needs no manual invalidation — a fresh
- * `runs` array (from each ~30s live-data poll) contains new run objects, so
- * old entries simply become unreachable and are garbage collected.
+ * itself. Parsing every timestamp on each animation tick scales with the full
+ * snapshot rather than the visible train count. The `WeakMap` requires no
+ * manual invalidation because each live-data refresh creates new run objects.
  */
 const parsedTimesCache = new WeakMap<LiveRun, ParsedRunTimes>();
 
@@ -85,13 +80,9 @@ function getParsedTimes(run: LiveRun): ParsedRunTimes {
 }
 
 /**
- * Counts how many runs would currently render a marker (mid-route, or
- * within the "waiting"/"just arrived" grace windows) — i.e. trains actually
- * in service right now, as opposed to `runs.length`, which also includes
- * every other upcoming scheduled service the live snapshot happens to have
- * fetched ahead of time (up to ~12 departures per station, which can span
- * hours for infrequent lines). Cheap enough to call on every live-data poll
- * (no polyline geometry needed, just the cached parsed stop times).
+ * Counts runs that currently render a marker, including the waiting and
+ * recently arrived grace windows. Future departures in the snapshot are
+ * excluded. Cached stop times make this suitable for each live-data refresh.
  */
 export function countActiveRuns(runs: LiveRun[], now: number, options: InterpolationOptions): number {
   let count = 0;
@@ -115,11 +106,8 @@ export function countActiveRuns(runs: LiveRun[], now: number, options: Interpola
  * bracket `now`, then interpolating along that run's line's track polyline
  * (not a straight line) between those two stations' projected positions.
  *
- * This is a simplification appropriate for v1: it assumes a run's predicted stop
- * times, sorted chronologically, correspond to the physical station order along
- * its line. This holds for all-stops services; express/limited-stops services
- * that skip stations may show the train "teleporting" across the skipped gap
- * rather than slowing down, since we have no predicted time for the skipped stop.
+ * Chronological predicted stops are assumed to follow physical station order.
+ * Limited-stop services cross skipped sections without intermediate timing.
  */
 export function computeTrainPositions(
   runs: LiveRun[],
@@ -197,13 +185,8 @@ export function computeTrainPositions(
         let lon: number;
         let lat: number;
         if (distA === undefined || distB === undefined) {
-          // Fallback: straight-line interpolation if a station wasn't found on the
-          // polyline. This should be rare/never in practice (every station in a
-          // line's own stationIds gets a distance in buildInterpolationContext) —
-          // warn loudly if it ever happens, since unlike the polyline-following
-          // path above, a straight-line lerp between two stations isn't bounded
-          // to the track and can visibly cut across land/water for stations that
-          // are far apart.
+          // Missing station geometry falls back to straight-line interpolation.
+          // Emit a warning because this path is not constrained to the track.
           console.warn(
             `[interpolate] station missing from line "${run.lineId}"'s distance map (falling back to straight-line lerp): ${stationA.id}=${distA}, ${stationB.id}=${distB}`,
           );

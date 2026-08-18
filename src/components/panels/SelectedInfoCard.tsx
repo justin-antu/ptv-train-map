@@ -21,15 +21,9 @@ interface SelectedInfoCardProps {
 }
 
 /**
- * The station/train "click for details" card, now living permanently in the
- * left pane instead of a floating MapLibre popup — this is a deliberate part
- * of the redesign (see the layout spec), which also nicely sidesteps the
- * original single-shared-popup-instance bookkeeping since React just
- * re-renders this component from `selection` state.
+ * Renders station or train details in the left pane from `selection` state.
  *
- * Owns its own 1s clock (rather than receiving `now` from a shared App-level
- * ticker) so that this is the *only* thing that re-renders once a second —
- * not the entire app tree.
+ * A local one-second clock limits ETA re-renders to this component.
  */
 export function SelectedInfoCard({
   selection,

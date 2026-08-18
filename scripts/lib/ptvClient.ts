@@ -1,9 +1,8 @@
 /**
  * Minimal client for the PTV Timetable API v3.
  *
- * This module is only ever imported by Node scripts under `scripts/` (run locally
- * or in the GitHub Actions "refresh-data" workflow). It must never be imported by
- * browser code, since it requires the secret API key.
+ * This Node-only module requires the secret API key and must not be imported by
+ * browser code.
  *
  * Auth scheme (verified against https://timetableapi.ptv.vic.gov.au/swagger/ui/index
  * and https://stevage.github.io/PTV-API-doc/3-quickstart.html, and cross-checked
@@ -16,17 +15,13 @@
  *   4. Hex-encode the digest and upper-case it.
  *   5. Append it as `&signature=<HEX>`.
  *
- * Note: the official PTV documentation appendix includes a worked example (key
+ * The official PTV documentation appendix includes a worked example (key
  * "9c132d31-...", devid 2, path "/v2/mode/2/line/787/stops-for-line") claiming a
- * specific resulting signature. That documented example is actually internally
- * inconsistent (independently reproduced and confirmed broken by a 2014
+ * signature that is internally inconsistent, as independently reproduced in a 2014
  * StackOverflow thread: https://stackoverflow.com/questions/22340119). The
- * *algorithm* described in prose (HMAC-SHA1 of path+query+devid, keyed with the
- * secret, hex-uppercased) is correct and matches multiple independent real-world
- * open-source PTV API clients (e.g. github.com/bremor/public_transport_victoria,
- * and the widely-shared "ptv_signature.py" gist). ptvClient.test.ts cross-checks
- * this implementation against an independently written reference implementation
- * of that same documented algorithm rather than the broken doc example.
+ * documented algorithm is consistent with independent open-source PTV clients.
+ * ptvClient.test.ts validates against an independent reference implementation
+ * instead of the inconsistent example.
  */
 import { createHmac } from "node:crypto";
 
@@ -91,7 +86,7 @@ async function ptvGet<T>(pathAndQuery: string, credentials: PtvCredentials): Pro
   throw new Error("Unreachable PTV retry state");
 }
 
-// --- Typed response shapes (only the fields we actually use) -------------
+// --- Typed response shapes used by this client ----------------------------
 
 export interface PtvRoute {
   route_id: number;
@@ -150,10 +145,8 @@ export interface PtvDisruption {
 }
 
 /**
- * The API groups disruptions by transport mode (metro_train, metro_tram, general,
- * regional_train, etc.) — we only care about a handful of these, but type the
- * response loosely (all optional arrays) rather than exhaustively listing every
- * mode, since which modes are present depends on what's actually disrupted.
+ * The API groups disruptions by transport mode. Optional mode arrays preserve
+ * unlisted categories and accommodate responses containing only affected modes.
  */
 interface PtvDisruptionsByMode {
   [mode: string]: PtvDisruption[] | undefined;
@@ -171,7 +164,7 @@ export async function getRoutes(routeType: number, credentials: PtvCredentials):
   return res.routes;
 }
 
-/** GET /v3/stops/route/{routeId}/route_type/{routeType} — used to resolve PTV stop_ids for our stations. */
+/** GET /v3/stops/route/{routeId}/route_type/{routeType} — resolves station stop IDs. */
 export async function getStopsForRoute(
   routeId: number,
   routeType: number,
@@ -188,9 +181,8 @@ export async function getStopsForRoute(
  * `{ disruptions: { metro_train: [...], general: [...], ... }, status }`, each
  * disruption carrying `disruption_id`, `title`, `url`, `disruption_type`,
  * `from_date`/`to_date`, and a `routes[]` array of every route it applies to.
- * We flatten every mode's array rather than assuming `metro_train` is the only
- * relevant one (a network-wide disruption can be filed under `general` while
- * still listing our route_id in its `routes[]`), and let the caller filter/dedupe.
+ * Flatten all mode arrays because a network-wide disruption may be filed under
+ * `general` while still listing the requested route ID.
  */
 export async function getDisruptionsForRoute(routeId: number, credentials: PtvCredentials): Promise<PtvDisruption[]> {
   const res = await ptvGet<PtvDisruptionsResponse>(`/v3/disruptions/route/${routeId}?disruption_status=current`, credentials);
@@ -216,7 +208,6 @@ export async function getDeparturesForStop(
     expand: "Run",
     include_cancelled: "false",
   });
-  // URLSearchParams would percent-encode "Run" fine, but `expand` can repeat; add manually.
   const path = `/v3/departures/route_type/${routeType}/stop/${stopId}/route/${routeId}?${query.toString()}`;
   const res = await ptvGet<PtvDeparturesResponse>(path, credentials);
   return { departures: res.departures, runs: res.runs ?? {} };

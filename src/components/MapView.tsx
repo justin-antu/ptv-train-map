@@ -23,16 +23,10 @@ interface MapViewProps {
 }
 
 /**
- * Thin React wrapper around the (framework-agnostic) MapLibre setup + train
- * interpolation/animation logic ported from the original vanilla app. The
- * MapLibre instance and its per-frame marker updates are managed entirely
- * imperatively inside refs/effects — none of that goes through React state,
- * since re-rendering the whole component tree at animation-frame rate would
- * be wasteful (and pointless, since MapLibre already owns its own canvas).
+ * React wrapper around MapLibre and train interpolation. Refs and effects own
+ * the map instance and marker updates to avoid animation-rate React renders.
  *
- * Wrapped in `memo` so that App-level re-renders unrelated to this
- * component's own props (e.g. a countdown ticking somewhere else in the
- * tree) never cause it to re-render, let alone reinitialize the map.
+ * `memo` prevents unrelated application updates from re-rendering the wrapper.
  */
 export const MapView = memo(
   forwardRef<MapViewHandle, MapViewProps>(function MapView(
@@ -54,10 +48,7 @@ export const MapView = memo(
     if (mapRef.current) setVisibleLines(mapRef.current, visibleLineIds);
   }, [visibleLineIds]);
 
-  // Mount once: create the map, draw the network, wire up click/hover handling
-  // and the shared train-position animation loop. staticData/callbacks are
-  // treated as stable for the component's lifetime (App only creates them
-  // once staticData has loaded, and passes stable callback identities).
+  // Mount once with static data and stable callback identities.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;

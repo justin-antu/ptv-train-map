@@ -15,14 +15,14 @@ function saveFavouriteStationId(id: string | null): void {
     if (id) localStorage.setItem(FAVOURITE_STORAGE_KEY, id);
     else localStorage.removeItem(FAVOURITE_STORAGE_KEY);
   } catch {
-    // Ignore write failures — favouriting still works for this session.
+    // The in-memory favourite remains available when storage writes fail.
   }
 }
 
 export interface FavouriteStationController {
   favouriteId: string | null;
   isFavourite(stationId: string): boolean;
-  /** Stars `stationId` as the favourite (replacing any previous one), or un-stars it if it's already the favourite. */
+  /** Toggles `stationId` as the single favourite station. */
   toggle(stationId: string): void;
   clear(): void;
 }

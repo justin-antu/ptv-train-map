@@ -124,7 +124,7 @@
   }
 }
 
-/* Shared, static side-pane treatment. The map/header/footer remain untouched. */
+/* Static background treatment for side panes. */
 .side-pane-grid {
   background-color: hsl(var(--background));
   background-image: radial-gradient(circle, hsl(var(--foreground) / 0.12) 0.8px, transparent 0.9px);
@@ -138,8 +138,7 @@
 
 /*
  * MapLibre renders its own marker/popup DOM outside of React's control, so
- * these can't be expressed as Tailwind utility classes on JSX elements — they
- * target MapLibre's own class names / our imperatively-created marker elements.
+ * these selectors target MapLibre classes and imperative marker elements.
  */
 .info-popup .maplibregl-popup-content {
   padding: 0;
@@ -174,12 +173,8 @@
 }
 
 .train-marker {
-  /* MapLibre's own .maplibregl-marker rule (applied to this same element) sets
-   * position: absolute; left: 0; top: 0 and relies on that for its
-   * `transform: translate(Xpx, Ypx)` positioning to be relative to the map
-   * container's origin. We must match position: absolute here too — see the
-   * original vanilla-JS implementation's note (git history) for the full
-   * explanation of what breaks otherwise. */
+  /* Absolute positioning keeps MapLibre's translate transform relative to the
+   * map container origin. */
   position: absolute;
   width: 22px;
   height: 22px;
@@ -226,7 +221,7 @@
   transition: transform 0.15s ease-out;
 }
 
-/* Thin, theme-aware scrollbars for the panel/legend/card scroll areas (WebKit + Firefox). */
+/* Theme-aware panel scrollbars for WebKit and Firefox. */
 .thin-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;

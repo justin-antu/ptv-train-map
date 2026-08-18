@@ -120,8 +120,8 @@ function distanceMetres(a: GtfsStopRecord, b: GtfsStopRecord): number {
 
 /**
  * Resolves GTFS platform stops to stable station identities. A declared
- * parent_station is authoritative. The coordinate fallback is deliberately
- * name-scoped and distance-limited so equally named but geographically
+ * parent_station is authoritative. The coordinate fallback is name-scoped
+ * and distance-limited so equally named but geographically
  * distinct stations cannot be merged.
  */
 export function canonicalizeGtfsStops(records: GtfsStopRecord[]): Map<string, CanonicalStation> {

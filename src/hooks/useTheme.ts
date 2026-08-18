@@ -13,7 +13,7 @@ function loadInitialTheme(): Theme {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     if (stored === "light" || stored === "dark") return stored;
   } catch {
-    // Storage disabled/inaccessible — use the default theme.
+    // Use the default theme when storage is inaccessible.
   }
   return "light";
 }
@@ -22,17 +22,14 @@ function saveTheme(theme: Theme): void {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
-    // Ignore write failures — theme still applies for this session.
+    // The in-memory theme remains active when storage writes fail.
   }
 }
 
 /**
- * Tracks the light/dark theme preference, persisted in `localStorage`
- * (consistent with how the legend/favourite preferences are persisted), and
- * keeps the `<html>` element's `dark` class + the mobile browser chrome's
- * `theme-color` meta tag in sync so Tailwind's `dark:` variants react to it.
- * Deliberately does NOT affect the MapLibre basemap — the map stays on a
- * single, permanently light basemap regardless of UI theme (see `map.ts`).
+ * Persists the light/dark interface preference and synchronizes the `<html>`
+ * class and browser `theme-color`. The MapLibre basemap remains light in both
+ * interface themes.
  */
 export function useTheme(): [Theme, (theme: Theme) => void] {
   const [theme, setThemeState] = useState<Theme>(loadInitialTheme);

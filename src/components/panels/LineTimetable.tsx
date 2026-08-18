@@ -112,8 +112,7 @@ export const LineTimetable = memo(function LineTimetable({
     return () => observer.disconnect();
   }, []);
 
-  // One positioning action per selection change. No timer dependency: minute
-  // ticks update highlighting but never pull the viewport away from the user.
+  // Reposition only when the selection changes; minute ticks must not move the viewport.
   useEffect(() => {
     const element = scrollerRef.current;
     if (!element) return;
