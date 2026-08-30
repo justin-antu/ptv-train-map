@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { Settings2 } from "lucide-react";
 import { APP_TITLE, NETWORK_SUBTITLE } from "../config";
 import type { Theme } from "../hooks/useTheme";
 import { cn } from "../lib/utils";
@@ -17,7 +16,6 @@ interface HeaderProps {
   trainCount: number;
   activeSection: SectionId;
   onNavigate: (sectionId: SectionId) => void;
-  onOpenSettings: () => void;
 }
 
 export const Header = memo(function Header({
@@ -28,7 +26,6 @@ export const Header = memo(function Header({
   trainCount,
   activeSection,
   onNavigate,
-  onOpenSettings,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur-md">
@@ -77,15 +74,6 @@ export const Header = memo(function Header({
             title="Toggle dark mode"
             className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background/60 text-foreground transition-colors hover:bg-accent [&_svg]:size-4"
           />
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            title="Commute settings"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background/60 text-foreground transition-colors hover:bg-accent"
-          >
-            <Settings2 className="size-4" aria-hidden="true" />
-            <span className="sr-only">Commute settings</span>
-          </button>
         </div>
       </div>
     </header>

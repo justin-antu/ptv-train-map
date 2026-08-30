@@ -1,54 +1,10 @@
-import { useCallback, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { useCollapsedSection } from "./collapsedSections";
 import { cn } from "../../lib/utils";
 
-const STORAGE_KEY = "wimt:collapsedSections";
-
-function readCollapsed(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter(([, value]) => typeof value === "boolean")) as Record<
-        string,
-        boolean
-      >;
-    }
-  } catch {
-    // Treat malformed or inaccessible storage as "everything expanded".
-  }
-  return {};
-}
-
-function writeCollapsed(next: Record<string, boolean>): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Collapse state is a convenience; losing it is not worth surfacing.
-  }
-}
-
-/**
- * Remembers whether a card is collapsed across reloads. All cards share one
- * storage record so a commuter's layout survives without a key per section.
- */
-export function useCollapsedSection(id: string, defaultCollapsed: boolean) {
-  const [collapsed, setCollapsed] = useState(() => readCollapsed()[id] ?? defaultCollapsed);
-
-  const toggle = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      writeCollapsed({ ...readCollapsed(), [id]: next });
-      return next;
-    });
-  }, [id]);
-
-  return { collapsed, toggle };
-}
-
 interface SectionCardProps {
-  /** Doubles as the desktop scroll-anchor target and collapse storage key, e.g. `commute`. */
+  /** Doubles as the desktop scroll-anchor target and collapse storage key, e.g. `departures`. */
   id: string;
   title: string;
   description?: string;
@@ -81,11 +37,13 @@ export function SectionCard({
   const { collapsed, toggle } = useCollapsedSection(id, defaultCollapsed);
   const bodyId = `${id}-body`;
 
+  // The card deliberately does not clip its overflow: the departure board's
+  // dropdown panels overhang it, and clipping would cut the station list short.
   return (
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className={cn("scroll-mt-20 overflow-hidden rounded-xl border border-border bg-card/60 shadow-sm", className)}
+      className={cn("scroll-mt-20 rounded-xl border border-border bg-card/60 shadow-sm", className)}
     >
       <div className="flex items-start gap-2 px-3 py-2.5 sm:px-4 sm:py-3">
         {/* Only the title block is the toggle: nesting the action controls inside

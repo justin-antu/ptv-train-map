@@ -66,6 +66,10 @@ export interface LineDisruptionSummary {
   worstSeverity: DisruptionSeverity | null;
   /** Subset of `lineIds` carrying a critical alert, so they can be named first. */
   criticalLineIds: string[];
+  /** Distinct critical disruptions, for the major-disruption indicator. */
+  criticalCount: number;
+  /** Distinct warning and information disruptions. */
+  otherCount: number;
   /** Distinct disruptions across those lines. */
   total: number;
 }
@@ -80,7 +84,8 @@ export function summariseLineDisruptions(
 ): LineDisruptionSummary {
   const affected: string[] = [];
   const criticalLineIds: string[] = [];
-  const seen = new Set<number>();
+  const critical = new Set<number>();
+  const other = new Set<number>();
   let worstIndex = Number.POSITIVE_INFINITY;
 
   for (const lineId of lineIds) {
@@ -89,10 +94,15 @@ export function summariseLineDisruptions(
     affected.push(lineId);
 
     for (const disruption of disruptions) {
-      seen.add(disruption.id);
-      const index = DISRUPTION_SEVERITY_ORDER.indexOf(disruptionSeverity(disruption));
+      const severity = disruptionSeverity(disruption);
+      if (severity === "critical") {
+        critical.add(disruption.id);
+        if (!criticalLineIds.includes(lineId)) criticalLineIds.push(lineId);
+      } else {
+        other.add(disruption.id);
+      }
+      const index = DISRUPTION_SEVERITY_ORDER.indexOf(severity);
       if (index < worstIndex) worstIndex = index;
-      if (disruptionSeverity(disruption) === "critical" && !criticalLineIds.includes(lineId)) criticalLineIds.push(lineId);
     }
   }
 
@@ -100,32 +110,10 @@ export function summariseLineDisruptions(
     lineIds: affected,
     worstSeverity: Number.isFinite(worstIndex) ? DISRUPTION_SEVERITY_ORDER[worstIndex] : null,
     criticalLineIds,
-    total: seen.size,
+    criticalCount: critical.size,
+    otherCount: other.size,
+    total: critical.size + other.size,
   };
-}
-
-export interface LineStatus {
-  label: string;
-  severity: DisruptionSeverity | "good";
-  disruptions: LineDisruption[];
-}
-
-const LINE_STATUS_LABELS: Record<DisruptionSeverity, string> = {
-  critical: "Part suspended",
-  warning: "Delays",
-  info: "Works planned",
-};
-
-/**
- * Summarises one line's current condition for the network status list, using
- * its most disruptive active alert.
- */
-export function lineStatusFor(disruptions: readonly LineDisruption[] | undefined): LineStatus {
-  const unique = [...new Map((disruptions ?? []).map((disruption) => [disruption.id, disruption])).values()];
-  if (unique.length === 0) return { label: "Good service", severity: "good", disruptions: [] };
-
-  const worst = DISRUPTION_SEVERITY_ORDER.find((severity) => unique.some((disruption) => disruptionSeverity(disruption) === severity));
-  return { label: worst ? LINE_STATUS_LABELS[worst] : "Good service", severity: worst ?? "good", disruptions: unique };
 }
 
 /** Formats a disruption's active window for display, e.g. "Affected from 3 Sep 2026". */

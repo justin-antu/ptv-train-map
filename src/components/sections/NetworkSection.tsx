@@ -1,14 +1,13 @@
 import { forwardRef } from "react";
 import { SectionCard } from "../layout/SectionCard";
 import { MapView, type MapViewHandle } from "../MapView";
-import { LineStatusCard } from "../panels/LineStatusCard";
 import { NetworkStatsCard } from "../panels/NetworkStatsCard";
 import { SelectedInfoCard } from "../panels/SelectedInfoCard";
 import { BorderBeam } from "../ui/border-beam";
 import { NETWORK_SUBTITLE } from "../../config";
-import type { LineDisruption, LiveRun, NetworkStaticData, StationStatic } from "../../shared/types";
+import type { LiveRun, NetworkStaticData, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
-import type { CommutePreferencesController } from "../../hooks/useCommutePreferences";
+import type { DeparturePreferencesController } from "../../hooks/useDeparturePreferences";
 
 interface NetworkSectionProps {
   staticData: NetworkStaticData;
@@ -18,9 +17,8 @@ interface NetworkSectionProps {
   runs: LiveRun[];
   /** Lines drawn on the map: the commuter's favourites, or all of them. */
   visibleLineIds: Set<string>;
-  disruptionsByLine: Record<string, LineDisruption[]>;
   selection: Selection;
-  commute: CommutePreferencesController;
+  preferences: DeparturePreferencesController;
   trainsRunning: number;
   linesActive: number;
   disruptionCount: number;
@@ -31,8 +29,8 @@ interface NetworkSectionProps {
 }
 
 /**
- * The live map and line status. Secondary to the commute board, so it sits
- * behind its own tab on mobile.
+ * The live map. Secondary to the departure board, so it sits behind its own tab
+ * on mobile.
  */
 export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(function NetworkSection(
   {
@@ -42,9 +40,8 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
     lineColorById,
     runs,
     visibleLineIds,
-    disruptionsByLine,
     selection,
-    commute,
+    preferences,
     trainsRunning,
     linesActive,
     disruptionCount,
@@ -60,11 +57,11 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
   return (
     <SectionCard
       id="network"
-      title="Live network"
+      title="Network map"
       description={
-        visibleLines.length < staticData.lines.length
-          ? `Showing your ${visibleLines.length} lines — change this in settings`
-          : "Estimated train positions and line status"
+        visibleLines.length === 1
+          ? `Showing ${visibleLines[0].name} only — change this with the line filter`
+          : "Estimated live train positions"
       }
     >
       <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -106,12 +103,8 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
             lineNameById={lineNameById}
             lineColorById={lineColorById}
             runs={runs}
-            commute={commute}
+            preferences={preferences}
             onClose={onClearSelection}
-          />
-          <LineStatusCard
-            lines={visibleLines.map((line) => ({ id: line.id, name: line.name, color: line.color }))}
-            disruptionsByLine={disruptionsByLine}
           />
         </div>
       </div>

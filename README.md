@@ -4,14 +4,15 @@ A static, mobile-first React application for Metro Trains Melbourne commuters. I
 
 ## Features
 
-- A commute board built around two saved stations, **To city** and **From city**, with the leg matching the time of day selected by default.
-- A live departures table for the selected commute station showing scheduled time, destination, remaining stops, line, delay status, and expected arrival.
-- Service alerts for the commuter's own lines surfaced directly on the commute board, plus a full severity-grouped disruption feed.
+- A live departures board showing the next three services from the saved station, expandable to twelve, with scheduled time, destination, remaining stops, line, delay status, and expected arrival.
+- Line, departing station, and destination are chosen from searchable dropdowns in the board's own control bar, with a swap control that reverses the journey. There is no separate settings screen.
+- Service alerts on the relevant lines appear as severity-coded indicators on the board, alongside a full severity-grouped disruption feed.
 - Estimated train positions across all 16 Metro lines, animated along GTFS track geometry using PTV predicted departure times.
-- Favourite lines that filter departures, alerts, and the map at once. Leaving them unset shows the whole network.
+- The chosen line filters departures, alerts, and the map at once. Leaving it unset shows the whole network.
 - Full daily line timetables for eight Melbourne dates, including direction selection, branch variants, express-service gaps, overnight GTFS times, sticky identifiers, and horizontal scrolling.
 - Delay indicators for predictions at least three minutes behind schedule, and a data-freshness readout that warns when the live snapshot goes stale.
-- Opt-in browser notifications for an approaching train. Permission is requested only from the notification switch in commute settings.
+- Opt-in browser notifications for an approaching train. Permission is requested only from the bell control on the departures board.
+- Every section is a collapsible card whose state persists, and navigation expands a collapsed target before scrolling to it.
 - Bottom tab navigation on phones and a single scrolling page on desktop, both driven by the same four sections. Pull to refresh re-polls live data on mobile.
 - All preferences — stations, lines, notifications, and theme — are stored in `localStorage`. There are no accounts.
 - Light theme by default with optional dark interface chrome. The map remains on the light CARTO Positron basemap in both themes.
@@ -54,7 +55,7 @@ The frontend polls the committed live snapshot every 30 seconds and recomputes t
 
 The interface is implemented with React 19, TypeScript, Tailwind CSS, Radix UI primitives, Motion, local Magic UI-style components, and MapLibre GL JS. The map uses keyless CARTO Positron raster tiles and does not change style when the interface theme changes.
 
-Content is organised into four sections — Commute, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all four as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
+Content is organised into four sections — Departures, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all four as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
 
 Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeTokens` publishes that definition as a stylesheet containing a `:root` and a `.dark` block, so switching themes remains a single class toggle and the values in `src/index.css` act only as first-paint fallbacks. The map Border Beam is decorative and does not affect map interaction.
 

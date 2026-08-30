@@ -6,7 +6,7 @@ import { AlertTriangle, CalendarDays, MapPinned, TrainFront } from "lucide-react
  * order, so the two layouts can never drift apart.
  */
 export const APP_SECTIONS = [
-  { id: "commute", label: "Commute", description: "Your stations and next departures", icon: TrainFront },
+  { id: "departures", label: "Departures", description: "Your next services and trip planner", icon: TrainFront },
   { id: "network", label: "Network", description: "Live map and line status", icon: MapPinned },
   { id: "timetable", label: "Timetable", description: "Full scheduled services", icon: CalendarDays },
   { id: "alerts", label: "Alerts", description: "Current service disruptions", icon: AlertTriangle },
@@ -14,7 +14,7 @@ export const APP_SECTIONS = [
 
 export type SectionId = (typeof APP_SECTIONS)[number]["id"];
 
-export const DEFAULT_SECTION_ID: SectionId = "commute";
+export const DEFAULT_SECTION_ID: SectionId = "departures";
 
 export function isSectionId(value: string): value is SectionId {
   return APP_SECTIONS.some((section) => section.id === value);

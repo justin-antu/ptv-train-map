@@ -1,23 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AppShell } from "./components/layout/AppShell";
-import { CommuteSection } from "./components/sections/CommuteSection";
 import { LiveDeparturesSection } from "./components/sections/LiveDeparturesSection";
 import { RoutePlannerSection } from "./components/sections/RoutePlannerSection";
 import { NetworkSection } from "./components/sections/NetworkSection";
 import { TimetableSection } from "./components/sections/TimetableSection";
 import { DisruptionsSection } from "./components/sections/DisruptionsSection";
-import { CommuteSettingsDialog } from "./components/CommuteSettingsDialog";
 import type { MapViewHandle } from "./components/MapView";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
 import { useLiveData } from "./hooks/useLiveData";
 import { useTimetableData } from "./hooks/useTimetableData";
-import { useCommutePreferences } from "./hooks/useCommutePreferences";
+import { useDeparturePreferences } from "./hooks/useDeparturePreferences";
 import { useFavouriteLineFilter } from "./hooks/useFavouriteLineFilter";
 import { useNotifications } from "./hooks/useNotifications";
 import { aggregateDisruptions, summariseLineDisruptions } from "./data/disruptions";
-import { defaultCommuteDirection, otherDirection } from "./shared/commute";
 import { countActiveRuns } from "./trains/interpolate";
 import { APP_TITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
 import type { Selection } from "./shared/selection";
@@ -29,26 +26,22 @@ export default function App() {
   const live = useLiveData(staticData);
   const timetable = useTimetableData();
   const [selection, setSelection] = useState<Selection>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const mapRef = useRef<MapViewHandle>(null);
 
   const allLineIds = useMemo(() => staticData?.lines.map((l) => l.id) ?? [], [staticData]);
-  const commute = useCommutePreferences();
-  const lineFilter = useFavouriteLineFilter(commute.favouriteLineIds, allLineIds);
-  const preferredDirection = useMemo(() => defaultCommuteDirection(), []);
+  const preferences = useDeparturePreferences();
+  // One chosen line narrows the whole app; no choice means the whole network.
+  const favouriteLineIds = useMemo(() => (preferences.lineId ? [preferences.lineId] : []), [preferences.lineId]);
+  const lineFilter = useFavouriteLineFilter(favouriteLineIds, allLineIds);
 
   const stationsById = useMemo(() => new Map((staticData?.stations ?? []).map((s) => [s.id, s])), [staticData]);
   const lineNameById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.name])), [staticData]);
   const lineColorById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.color])), [staticData]);
 
-  // Notifications follow the time-of-day leg rather than whichever tab is on
-  // screen, so glancing at the return trip does not move the alerts.
-  const notifyStationId = useMemo(
-    () => commute.stationIdFor(preferredDirection) ?? commute.stationIdFor(otherDirection(preferredDirection)),
-    [commute, preferredDirection],
-  );
-  const notifyStation = notifyStationId ? stationsById.get(notifyStationId) : undefined;
-  const notifications = useNotifications(notifyStationId, notifyStation, live.runs);
+  // Arrival alerts follow the board's origin, which is the platform the
+  // commuter is actually standing on.
+  const notifyStation = preferences.originStationId ? stationsById.get(preferences.originStationId) : undefined;
+  const notifications = useNotifications(preferences.originStationId, notifyStation, live.runs);
 
   // Count only runs within the active display window. The snapshot also
   // contains future departures. Recompute once per live-data refresh.
@@ -65,15 +58,15 @@ export default function App() {
   const linesActive = useMemo(() => new Set(live.runs.map((run) => run.lineId)).size, [live.runs]);
 
   /**
-   * Lines worth warning this commuter about: their chosen lines, or failing
-   * that, whichever lines serve their commute stations.
+   * Lines worth warning this commuter about: their chosen line, or failing
+   * that, whichever lines serve the stations on their board.
    */
-  const commuteDisruptions = useMemo(() => {
+  const boardDisruptions = useMemo(() => {
     const relevant = new Set<string>();
     if (lineFilter.hasPreference) {
       for (const lineId of lineFilter.lineIds) relevant.add(lineId);
     } else {
-      for (const stationId of [commute.toCityStationId, commute.fromCityStationId]) {
+      for (const stationId of [preferences.originStationId, preferences.destinationStationId]) {
         const station = stationId ? stationsById.get(stationId) : undefined;
         for (const lineId of station?.lineIds ?? []) relevant.add(lineId);
       }
@@ -82,18 +75,18 @@ export default function App() {
       live.disruptionsByLine,
       allLineIds.filter((lineId) => relevant.has(lineId)),
     );
-  }, [lineFilter, commute.toCityStationId, commute.fromCityStationId, stationsById, allLineIds, live.disruptionsByLine]);
-
-  // Prompt once on a first visit so the commute board is never left empty
-  // without an obvious way to fill it.
-  useEffect(() => {
-    if (staticData && !commute.hasCommute) setSettingsOpen(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staticData]);
+  }, [
+    lineFilter,
+    preferences.originStationId,
+    preferences.destinationStationId,
+    stationsById,
+    allLineIds,
+    live.disruptionsByLine,
+  ]);
 
   const flyToAndSelect = useCallback((station: StationStatic) => {
-    mapRef.current?.flyToStation(station);
     setSelection({ kind: "station", stationId: station.id });
+    mapRef.current?.flyToStation(station);
   }, []);
 
   const handleStationSelect = useCallback((stationId: string) => {
@@ -135,34 +128,24 @@ export default function App() {
         generatedAtUtc={live.generatedAtUtc}
         trainCount={trainsRunningNow}
         alertCount={alertCount}
-        hasCriticalAlert={commuteDisruptions.criticalLineIds.length > 0}
-        onOpenSettings={() => setSettingsOpen(true)}
+        hasCriticalAlert={boardDisruptions.criticalCount > 0}
         onRefresh={live.refresh}
         sections={{
-          commute: (
+          departures: (
             <div className="flex flex-col gap-3 sm:gap-4">
-              <CommuteSection
-                commute={commute}
+              <LiveDeparturesSection
+                lines={staticData.lines}
+                stations={staticData.stations}
                 stationsById={stationsById}
                 runs={live.runs}
                 lineNameById={lineNameById}
                 lineColorById={lineColorById}
-                lineFilter={lineFilter}
-                disruptionSummary={commuteDisruptions}
-                notificationsEnabled={notifications.enabled}
+                preferences={preferences}
+                disruptionSummary={boardDisruptions}
+                notifications={notifications}
                 generatedAtUtc={live.generatedAtUtc}
                 isDemo={live.isDemo}
-                onOpenSettings={() => setSettingsOpen(true)}
-                onStationClick={flyToAndSelect}
-              />
-              <LiveDeparturesSection
-                commute={commute}
-                stationsById={stationsById}
-                runs={live.runs}
-                lineNameById={lineNameById}
-                lineColorById={lineColorById}
-                lineFilter={lineFilter}
-                initialDirection={preferredDirection}
+                onShowOnMap={flyToAndSelect}
               />
               <RoutePlannerSection />
             </div>
@@ -176,9 +159,8 @@ export default function App() {
               lineColorById={lineColorById}
               runs={live.runs}
               visibleLineIds={lineFilter.effectiveLineIds}
-              disruptionsByLine={live.disruptionsByLine}
               selection={selection}
-              commute={commute}
+              preferences={preferences}
               trainsRunning={trainsRunningNow}
               linesActive={linesActive}
               disruptionCount={alertCount}
@@ -193,7 +175,6 @@ export default function App() {
               data={timetable.data}
               loading={timetable.loading}
               error={timetable.error}
-              disruptionsByLine={live.disruptionsByLine}
             />
           ),
           alerts: (
@@ -206,15 +187,6 @@ export default function App() {
             />
           ),
         }}
-      />
-
-      <CommuteSettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        stations={staticData.stations}
-        lines={staticData.lines}
-        commute={commute}
-        notifications={notifications}
       />
     </TooltipProvider>
   );

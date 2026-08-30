@@ -2,11 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CalendarDays, ChevronDown, TrainFront } from "lucide-react";
 import { useNow } from "../../hooks/useNow";
 import { cn } from "../../lib/utils";
-import type {
-  LineDisruption,
-  NetworkTimetableData,
-  TimetableService,
-} from "../../shared/types";
+import type { NetworkTimetableData, TimetableService } from "../../shared/types";
 
 const LINE_STORAGE_KEY = "wimt:timetableLine";
 const ROW_HEIGHT = 44;
@@ -16,7 +12,6 @@ interface LineTimetableProps {
   data: NetworkTimetableData | null;
   loading: boolean;
   error: Error | null;
-  disruptionsByLine: Record<string, LineDisruption[]>;
 }
 
 function persistedLine(): string {
@@ -63,18 +58,12 @@ function relevantServiceIndex(services: TimetableService[], nowMinute: number): 
   return next >= 0 ? next : Math.max(0, services.length - 1);
 }
 
-export const LineTimetable = memo(function LineTimetable({
-  data,
-  loading,
-  error,
-  disruptionsByLine,
-}: LineTimetableProps) {
+export const LineTimetable = memo(function LineTimetable({ data, loading, error }: LineTimetableProps) {
   const nowTimestamp = useNow(60_000);
   const now = useMemo(() => melbourneNow(nowTimestamp), [nowTimestamp]);
   const [lineId, setLineId] = useState(persistedLine);
   const [date, setDate] = useState("");
   const [directionId, setDirectionId] = useState("");
-  const [alertsOpen, setAlertsOpen] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(500);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -101,7 +90,6 @@ export const LineTimetable = memo(function LineTimetable({
     if (!line.directions.some((candidate) => candidate.id === directionId)) {
       setDirectionId(line.directions[0]?.id ?? "");
     }
-    setAlertsOpen(false);
   }, [line, directionId]);
 
   useEffect(() => {
@@ -132,7 +120,6 @@ export const LineTimetable = memo(function LineTimetable({
 
   const dateAvailable = data.availableDates.includes(date);
   const nearestDate = data.availableDates[0];
-  const alerts = disruptionsByLine[line.id] ?? [];
   const staleMs = nowTimestamp - Date.parse(data.generatedAtUtc);
   const stale = Number.isFinite(staleMs) && staleMs > 36 * 60 * 60_000;
   const visibleStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
@@ -193,17 +180,6 @@ export const LineTimetable = memo(function LineTimetable({
             </button>
           ))}
         </div>
-
-        {alerts.length > 0 && (
-          <div className="mt-2 rounded-md border border-warning-border/60 bg-warning-surface">
-            <button type="button" onClick={() => setAlertsOpen((value) => !value)} aria-expanded={alertsOpen} className="flex min-h-9 w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] font-medium text-warning-foreground">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              <span className="flex-1">{alerts.length} current line alert{alerts.length === 1 ? "" : "s"}</span>
-              <ChevronDown className={cn("size-3 transition-transform", alertsOpen && "rotate-180")} />
-            </button>
-            {alertsOpen && <div className="space-y-2 border-t border-warning-border/50 px-2 py-2">{alerts.map((alert) => <p key={alert.id} className="text-[11px] leading-relaxed text-warning-foreground">{alert.title}</p>)}</div>}
-          </div>
-        )}
 
         {(data.source.partial || stale) && (
           <p className="mt-2 rounded-md border border-warning-border/60 bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">

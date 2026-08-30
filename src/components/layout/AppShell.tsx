@@ -4,6 +4,7 @@ import { Header } from "../Header";
 import { Footer } from "../Footer";
 import { MobileTabBar } from "./MobileTabBar";
 import { SectionErrorBoundary } from "./SectionErrorBoundary";
+import { CollapsedSectionsProvider, useCollapsedSections } from "./collapsedSections";
 import { SectionNavigationProvider } from "./sectionNavigation";
 import { APP_SECTIONS, DEFAULT_SECTION_ID, isSectionId, type SectionId } from "./sections";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -21,7 +22,6 @@ interface AppShellProps {
   trainCount: number;
   alertCount: number;
   hasCriticalAlert: boolean;
-  onOpenSettings: () => void;
   onRefresh: () => Promise<void> | void;
   /** Rendered content for each section, keyed by section id. */
   sections: Record<SectionId, ReactNode>;
@@ -35,7 +35,17 @@ interface AppShellProps {
  * Network tab does not pay to rebuild the MapLibre instance, while the map is
  * still never created for a commuter who only ever checks their departures.
  */
-export function AppShell({
+export function AppShell(props: AppShellProps) {
+  // The shell itself needs to expand sections when navigating, so the provider
+  // has to sit above the component reading it.
+  return (
+    <CollapsedSectionsProvider>
+      <AppShellContent {...props} />
+    </CollapsedSectionsProvider>
+  );
+}
+
+function AppShellContent({
   theme,
   onThemeChange,
   isDemo,
@@ -43,11 +53,11 @@ export function AppShell({
   trainCount,
   alertCount,
   hasCriticalAlert,
-  onOpenSettings,
   onRefresh,
   sections,
 }: AppShellProps) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const { expand } = useCollapsedSections();
   // A shared link or a reload lands on the section named in the URL fragment.
   const [activeSection, setActiveSection] = useState<SectionId>(() => {
     const fragment = window.location.hash.slice(1);
@@ -62,11 +72,17 @@ export function AppShell({
     (sectionId: SectionId) => {
       setActiveSection(sectionId);
       setOpenedSections((prev) => (prev.has(sectionId) ? prev : new Set(prev).add(sectionId)));
+      // Arriving at a collapsed card looks like a broken link, so open it first.
+      expand(sectionId);
       if (isDesktop) {
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Scroll after the expansion has been laid out, or the target's position
+        // is measured against its collapsed height.
+        requestAnimationFrame(() => {
+          document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
     },
-    [isDesktop],
+    [isDesktop, expand],
   );
 
   // Keep the fragment current so the view can be shared or reloaded, without
@@ -108,7 +124,6 @@ export function AppShell({
           trainCount={trainCount}
           activeSection={activeSection}
           onNavigate={navigate}
-          onOpenSettings={onOpenSettings}
         />
 
         {(pull.distance > 0 || pull.refreshing) && (

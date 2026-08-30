@@ -5,7 +5,7 @@ import { EtaText } from "../EtaText";
 import { DelayBadge } from "../DelayBadge";
 import type { LiveRun, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
-import type { CommutePreferencesController } from "../../hooks/useCommutePreferences";
+import type { DeparturePreferencesController } from "../../hooks/useDeparturePreferences";
 import { delayMinutesFor, soonestPerLine, upcomingStopsForStation } from "../../data/departures";
 import { useNow } from "../../hooks/useNow";
 import { cn } from "../../lib/utils";
@@ -16,7 +16,7 @@ interface SelectedInfoCardProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  commute: CommutePreferencesController;
+  preferences: DeparturePreferencesController;
   onClose: () => void;
 }
 
@@ -31,7 +31,7 @@ export function SelectedInfoCard({
   lineNameById,
   lineColorById,
   runs,
-  commute,
+  preferences,
   onClose,
 }: SelectedInfoCardProps) {
   const now = useNow(1000);
@@ -48,7 +48,7 @@ export function SelectedInfoCard({
     const station = stationsById.get(selection.stationId);
     if (!station) return null;
     const departures = soonestPerLine(upcomingStopsForStation(station, runs, now));
-    const isToCityStation = commute.toCityStationId === station.id;
+    const isOrigin = preferences.originStationId === station.id;
 
     return (
       <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-brand bg-card/80 p-4 shadow-sm backdrop-blur-sm">
@@ -60,13 +60,13 @@ export function SelectedInfoCard({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  onClick={() => commute.setStation("toCity", isToCityStation ? null : station.id)}
-                  className={cn("text-muted-foreground", isToCityStation && "text-warning")}
+                  onClick={() => preferences.setOrigin(isOrigin ? null : station.id)}
+                  className={cn("text-muted-foreground", isOrigin && "text-warning")}
                 >
-                  <Star className={cn("size-4", isToCityStation && "fill-warning text-warning")} />
+                  <Star className={cn("size-4", isOrigin && "fill-warning text-warning")} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{isToCityStation ? "Remove as my to-city station" : "Set as my to-city station"}</TooltipContent>
+              <TooltipContent>{isOrigin ? "Clear my departure station" : "Depart from this station"}</TooltipContent>
             </Tooltip>
             <Button size="icon-sm" variant="ghost" onClick={onClose} className="text-muted-foreground">
               <X className="size-4" />

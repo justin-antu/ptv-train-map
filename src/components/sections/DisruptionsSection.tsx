@@ -14,21 +14,21 @@ import { cn } from "../../lib/utils";
 import type { FavouriteLineFilter } from "../../hooks/useFavouriteLineFilter";
 import type { LineDisruption } from "../../shared/types";
 
-/** Severity styling, driven entirely by theme tokens. */
-const SEVERITY_STYLES: Record<DisruptionSeverity, { card: string; chip: string; icon: typeof AlertTriangle }> = {
+/**
+ * Only the severity chip carries a tone; the card itself stays neutral so the
+ * alert text reads at the same contrast as the rest of the app.
+ */
+const SEVERITY_STYLES: Record<DisruptionSeverity, { chip: string; icon: typeof AlertTriangle }> = {
   critical: {
-    card: "border-destructive-border/60 bg-destructive-surface text-destructive",
-    chip: "border-destructive-border/60 bg-destructive/10",
+    chip: "border-destructive/40 bg-destructive/10 text-destructive",
     icon: AlertTriangle,
   },
   warning: {
-    card: "border-warning-border/60 bg-warning-surface text-warning-foreground",
-    chip: "border-warning-border/60 bg-warning-muted/70",
+    chip: "border-warning-border/70 bg-warning-muted/70 text-warning-foreground",
     icon: AlertTriangle,
   },
   info: {
-    card: "border-info-border/60 bg-info-surface text-info-foreground",
-    chip: "border-info-border/60 bg-info/10",
+    chip: "border-warning-border/40 bg-warning-surface text-warning-foreground/80",
     icon: Info,
   },
 };
@@ -67,20 +67,21 @@ export function DisruptionsSection({
     <SectionCard
       id="alerts"
       title="Service disruptions"
-      description={showAllLines || !lineFilter.hasPreference ? "Current alerts across the network" : "Current alerts on your lines"}
-      actions={
-        canFilter ? (
-          <Button variant="ghost" size="sm" onClick={() => setShowAllLines((prev) => !prev)} className="text-muted-foreground">
-            {showAllLines ? "Show my lines" : `Show all (${hiddenCount} more)`}
-          </Button>
-        ) : undefined
-      }
+      description={showAllLines || !lineFilter.hasPreference ? "Current alerts across the network" : "Current alerts on your line"}
     >
+      {canFilter && (
+        <div className="mb-3 flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setShowAllLines((prev) => !prev)} className="text-muted-foreground">
+            {showAllLines ? "Show my line only" : `Show all lines (${hiddenCount} more)`}
+          </Button>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="flex items-center gap-3 rounded-lg border border-success-border/60 bg-success-surface p-4 text-success-foreground">
           <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
           <p className="text-sm font-medium">
-            Good service{lineFilter.hasPreference && !showAllLines ? " on your lines" : " on all lines"}
+            Good service{lineFilter.hasPreference && !showAllLines ? " on your line" : " on all lines"}
           </p>
         </div>
       ) : (
@@ -117,13 +118,13 @@ function DisruptionCard({
   const Icon = styles.icon;
 
   return (
-    <li className={cn("flex flex-col rounded-xl border p-4 shadow-sm", styles.card)}>
+    <li className="flex flex-col rounded-xl border border-border bg-card/80 p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className={cn("type-label flex items-center gap-1 rounded-full border px-2 py-0.5", styles.chip)}>
           <Icon className="size-3" aria-hidden="true" />
           {DISRUPTION_SEVERITY_LABELS[severity]}
         </span>
-        {disruption.disruptionType && <span className="type-label opacity-70">{disruption.disruptionType}</span>}
+        {disruption.disruptionType && <span className="type-label text-muted-foreground">{disruption.disruptionType}</span>}
       </div>
 
       <p className="mt-2 flex-1 text-xs leading-relaxed">{disruption.title}</p>
@@ -137,7 +138,7 @@ function DisruptionCard({
         ))}
       </div>
 
-      <p className="mt-2 text-[11px] leading-snug opacity-75">{formatAffectedDates(disruption.fromDateUtc, disruption.toDateUtc)}</p>
+      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{formatAffectedDates(disruption.fromDateUtc, disruption.toDateUtc)}</p>
 
       {disruption.url && (
         <a

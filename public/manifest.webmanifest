@@ -10,7 +10,7 @@
   "background_color": "#152c6b",
   "theme_color": "#152c6b",
   "shortcuts": [
-    { "name": "My commute", "short_name": "Commute", "url": "./#commute" },
+    { "name": "Live departures", "short_name": "Departures", "url": "./#departures" },
     { "name": "Service alerts", "short_name": "Alerts", "url": "./#alerts" }
   ],
   "icons": [
