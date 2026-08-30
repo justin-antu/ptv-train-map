@@ -31,7 +31,12 @@
     <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%icons/favicon-32.png" />
     <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      Not "black-translucent": that draws the web view under the status bar and
+      Dynamic Island, and the sticky header has no top inset to compensate.
+      "default" makes iOS reserve the strip and tint it from theme-color.
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Where's my train?" />
   </head>
   <body>
