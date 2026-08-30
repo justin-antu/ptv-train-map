@@ -52,6 +52,55 @@ export function upcomingStopsForStation(station: StationStatic, runs: LiveRun[],
   return results.sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc));
 }
 
+/** An upcoming departure enriched with its run's destination and remaining stop count. */
+export interface DepartureRow extends UpcomingStop {
+  destinationName: string;
+  /** Stops still to come after this station, for a "calling at N stops" summary. */
+  remainingStops: number;
+}
+
+/**
+ * Upcoming departures at `station` with run context attached, for the live
+ * departures board.
+ *
+ * PTV's snapshot carries no platform number, so callers cannot show one.
+ */
+export function departureRowsForStation(station: StationStatic, runs: LiveRun[], now: number): DepartureRow[] {
+  const rows: DepartureRow[] = [];
+  for (const run of runs) {
+    const index = run.stops.findIndex((stop) => stop.stationId === station.id);
+    if (index < 0) continue;
+    const stop = run.stops[index];
+    const t = Date.parse(stop.timeUtc);
+    if (!Number.isFinite(t) || t < now) continue;
+    rows.push({
+      lineId: run.lineId,
+      runRef: run.runRef,
+      timeUtc: stop.timeUtc,
+      scheduledTimeUtc: stop.scheduledTimeUtc,
+      isEstimate: stop.isEstimate,
+      delayMin: delayMinutesFor(stop),
+      destinationName: run.destinationName,
+      remainingStops: Math.max(0, run.stops.length - index - 1),
+    });
+  }
+  return rows.sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc));
+}
+
+/** Minutes late at which a departure is called out as delayed, matching `DelayBadge`. */
+export const DELAYED_THRESHOLD_MIN = 3;
+
+export interface DepartureStatus {
+  label: string;
+  tone: "success" | "warning" | "muted";
+}
+
+export function departureStatus(row: Pick<DepartureRow, "delayMin" | "isEstimate">): DepartureStatus {
+  if (row.delayMin >= DELAYED_THRESHOLD_MIN) return { label: `Delayed ${row.delayMin} min`, tone: "warning" };
+  if (!row.isEstimate) return { label: "Scheduled", tone: "muted" };
+  return { label: "On time", tone: "success" };
+}
+
 /** Reduces an already-sorted (soonest first) stop list to just the soonest one per line. */
 export function soonestPerLine(stops: readonly UpcomingStop[]): UpcomingStop[] {
   const seen = new Set<string>();

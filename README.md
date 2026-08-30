@@ -1,19 +1,21 @@
 # Dude, where's my train?
 
-A static React application for exploring Metro Trains Melbourne services through an estimated live train map and full daily line timetables. V/Line regional services are outside the project scope.
+A static, mobile-first React application for Metro Trains Melbourne commuters. It answers "when is my next train?" first, then offers an estimated live train map, full daily line timetables, and current service alerts. V/Line regional services are outside the project scope.
 
 ## Features
 
+- A commute board built around two saved stations, **To city** and **From city**, with the leg matching the time of day selected by default.
+- A live departures table for the selected commute station showing scheduled time, destination, remaining stops, line, delay status, and expected arrival.
+- Service alerts for the commuter's own lines surfaced directly on the commute board, plus a full severity-grouped disruption feed.
 - Estimated train positions across all 16 Metro lines, animated along GTFS track geometry using PTV predicted departure times.
-- Official PTV line colours, deduplicated station markers, line visibility controls, station search, and station or train detail cards.
-- Delay indicators for predictions at least three minutes behind schedule.
-- Inline PTV disruption alerts in the line controls and timetable panel.
+- Favourite lines that filter departures, alerts, and the map at once. Leaving them unset shows the whole network.
 - Full daily line timetables for eight Melbourne dates, including direction selection, branch variants, express-service gaps, overnight GTFS times, sticky identifiers, and horizontal scrolling.
-- A favourite-station departure board stored in `localStorage`.
-- Opt-in browser notifications for an approaching train. Permission is requested only from the notification toggle.
-- Responsive React interface with a 20/60/20 desktop layout: controls on the left, map in the centre, and timetable on the right.
+- Delay indicators for predictions at least three minutes behind schedule, and a data-freshness readout that warns when the live snapshot goes stale.
+- Opt-in browser notifications for an approaching train. Permission is requested only from the notification switch in commute settings.
+- Bottom tab navigation on phones and a single scrolling page on desktop, both driven by the same four sections. Pull to refresh re-polls live data on mobile.
+- All preferences — stations, lines, notifications, and theme — are stored in `localStorage`. There are no accounts.
 - Light theme by default with optional dark interface chrome. The map remains on the light CARTO Positron basemap in both themes.
-- Tailwind CSS design tokens, self-hosted variable Geist and Geist Mono fonts, and local Magic UI-style components including the map Border Beam.
+- A single theme configuration file drives every interface colour, exposed as Tailwind design tokens. Self-hosted IBM Plex Mono throughout, and local Magic UI-style components including the map Border Beam.
 - Installable PWA presentation. Offline operation is not supported because the application depends on refreshed service data.
 
 ## In-scope lines
@@ -52,7 +54,9 @@ The frontend polls the committed live snapshot every 30 seconds and recomputes t
 
 The interface is implemented with React 19, TypeScript, Tailwind CSS, Radix UI primitives, Motion, local Magic UI-style components, and MapLibre GL JS. The map uses keyless CARTO Positron raster tiles and does not change style when the interface theme changes.
 
-On desktop, the application uses a 20/60/20 controls-map-timetable grid. Smaller screens stack the map and panels. The map Border Beam is decorative and does not affect map interaction.
+Content is organised into four sections — Commute, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all four as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
+
+Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeTokens` publishes that definition as a stylesheet containing a `:root` and a `.dark` block, so switching themes remains a single class toggle and the values in `src/index.css` act only as first-paint fallbacks. The map Border Beam is decorative and does not affect map interaction.
 
 ## Data semantics and limitations
 
@@ -63,7 +67,9 @@ On desktop, the application uses a 20/60/20 controls-map-timetable grid. Smaller
 - **Station identity is name-based.** Shared stations use one coordinate selected during static-data generation; platform-level differences are not represented.
 - **Delay values are prediction-based.** A `+N min` value is the difference between a stop's scheduled and current predicted departure time.
 - **Timetable cells are scheduled, not real-time.** PTV `run_ref` and GTFS `trip_id` are not guaranteed to provide a stable join, so live estimates are not merged into timetable cells.
-- **Disruptions are associated with lines.** A line alert may not affect every station or service on that line.
+- **Disruptions are associated with lines.** A line alert may not affect every station or service on that line. Severity is inferred from PTV's free-text type and title because the feed carries no severity field.
+- **Platform numbers are unavailable.** The live snapshot records predicted departure times only, so the departures table cannot show a platform.
+- **Trip planning is not implemented.** The Plan a trip controls are a layout placeholder and do not search journeys.
 - **Live data requires configured credentials and a successful refresh.** When no live artifact is available, or a refresh fails, the interface uses a labelled sample preview with synthetic trains.
 - **The PWA does not provide offline service data.**
 
@@ -93,6 +99,7 @@ On desktop, the application uses a 20/60/20 controls-map-timetable grid. Smaller
 │   ├── hooks/
 │   ├── map/
 │   ├── shared/
+│   ├── theme/
 │   ├── trains/
 │   ├── App.tsx
 │   ├── config.ts
@@ -168,4 +175,4 @@ Configure GitHub Pages with **Settings → Pages → Source → GitHub Actions**
 - Station, route, timetable, and colour data: [Victorian GTFS Schedule](https://opendata.transport.vic.gov.au/dataset/gtfs-schedule), Department of Transport and Planning, licensed under CC BY 4.0.
 - Predicted departures and disruptions: [PTV Timetable API v3](https://www.vic.gov.au/public-transport-timetable-api).
 - Basemap: [CARTO Positron](https://carto.com/attributions), © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
-- Interface fonts: [Geist](https://vercel.com/font), self-hosted through Fontsource packages.
+- Interface font: [IBM Plex Mono](https://github.com/IBM/plex), self-hosted through Fontsource packages.

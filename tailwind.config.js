@@ -37,9 +37,15 @@ export default {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        brand: {
+          DEFAULT: "hsl(var(--brand))",
+          foreground: "hsl(var(--brand-foreground))",
+        },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+          surface: "hsl(var(--destructive-surface))",
+          border: "hsl(var(--destructive-border))",
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -51,6 +57,23 @@ export default {
           muted: "hsl(var(--warning-muted))",
           border: "hsl(var(--warning-border))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+          surface: "hsl(var(--success-surface))",
+          border: "hsl(var(--success-border))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+          surface: "hsl(var(--info-surface))",
+          border: "hsl(var(--info-border))",
+        },
+      },
+      spacing: {
+        // Home-indicator inset, so the fixed mobile tab bar stays tappable.
+        safe: "env(safe-area-inset-bottom, 0px)",
+        "tab-bar": "calc(3.5rem + env(safe-area-inset-bottom, 0px))",
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -14,14 +14,14 @@ export interface NetworkStatsCardProps {
 
 export function NetworkStatsCard({ trainsRunning, linesActive, stationCount, disruptionCount }: NetworkStatsCardProps) {
   const stats = [
-    { value: trainsRunning, label: "Trains running", icon: <TrainFront className="size-4 text-primary" /> },
-    { value: linesActive, label: "Lines active", icon: <Activity className="size-4 text-primary dark:text-emerald-400" /> },
-    { value: stationCount, label: "Stations", icon: <MapPinned className="size-4 text-primary" /> },
-    { value: disruptionCount, label: "Alerts now", icon: <AlertTriangle className="size-4 text-primary dark:text-warning" /> },
+    { value: trainsRunning, label: "Trains running", icon: <TrainFront className="size-4 text-brand" /> },
+    { value: linesActive, label: "Lines active", icon: <Activity className="size-4 text-success" /> },
+    { value: stationCount, label: "Stations", icon: <MapPinned className="size-4 text-brand" /> },
+    { value: disruptionCount, label: "Alerts now", icon: <AlertTriangle className="size-4 text-warning" /> },
   ];
 
   return (
-    <Card className="relative overflow-hidden border-t-2 border-border border-t-sky-400 bg-card/60 py-4 backdrop-blur-sm dark:border-t-foreground/60 dark:bg-card/80">
+    <Card className="relative overflow-hidden border-t-2 border-border border-t-brand bg-card/60 py-4 backdrop-blur-sm dark:bg-card/80">
       <CardContent className="px-4">
         <p className="type-label mb-3 text-muted-foreground">Live network stats</p>
         <div className="grid grid-cols-2 gap-3">

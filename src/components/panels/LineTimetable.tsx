@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarDays, ChevronDown, Clock3, TrainFront } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronDown, TrainFront } from "lucide-react";
 import { useNow } from "../../hooks/useNow";
 import { cn } from "../../lib/utils";
 import type {
@@ -149,16 +149,12 @@ export const LineTimetable = memo(function LineTimetable({
     }
   };
 
+  // The title and subtitle live in the enclosing section card, so this renders
+  // only its own controls and the virtualized grid.
   return (
-    <section aria-labelledby="line-timetable-title" className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <header className="shrink-0 border-b border-border bg-card/95 px-3 py-3">
-        <div className="type-label mb-1 flex items-center gap-1.5 text-muted-foreground">
-          <Clock3 className="size-3" aria-hidden="true" />
-          Scheduled daily services
-        </div>
-        <h2 id="line-timetable-title" className="type-heading text-lg leading-tight">Line timetable</h2>
-
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-border pb-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <label className="min-w-0">
             <span className="sr-only">Metro line</span>
             <span className="relative block">
@@ -210,7 +206,7 @@ export const LineTimetable = memo(function LineTimetable({
         )}
 
         {(data.source.partial || stale) && (
-          <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+          <p className="mt-2 rounded-md border border-warning-border/60 bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
             {data.source.partial ? "Some timetable data was unavailable during generation." : "This timetable is older than expected; verify service times with PTV."}
           </p>
         )}
@@ -238,10 +234,10 @@ export const LineTimetable = memo(function LineTimetable({
           <table className="type-numeric w-max min-w-full border-separate border-spacing-0 text-[11px]">
             <thead className="sticky top-0 z-20">
               <tr>
-                <th scope="col" className="sticky left-0 z-30 min-w-[7.5rem] border-r border-b border-border bg-muted px-2 py-2 text-left font-semibold">Service</th>
+                <th scope="col" className="sticky left-0 z-30 min-w-[8.5rem] border-r border-b border-border bg-muted px-2 py-2 text-left font-semibold">Service</th>
                 {direction.stationNames.map((station, index) => (
-                  <th key={`${direction.stationIds[index]}-${index}`} scope="col" className="h-16 w-[4.75rem] min-w-[4.75rem] border-r border-b border-border bg-muted px-1 py-1 text-center align-bottom font-semibold">
-                    <span className="inline-block max-w-[4.3rem] leading-tight">{station}</span>
+                  <th key={`${direction.stationIds[index]}-${index}`} scope="col" className="h-16 w-[5.5rem] min-w-[5.5rem] border-r border-b border-border bg-muted px-1 py-1 text-center align-bottom font-semibold">
+                    <span className="inline-block max-w-[5rem] leading-tight">{station}</span>
                   </th>
                 ))}
               </tr>
@@ -253,7 +249,7 @@ export const LineTimetable = memo(function LineTimetable({
                 const highlighted = index === highlightedIndex;
                 return (
                   <tr key={service.id} className={cn("h-11", highlighted && "bg-primary/10")} aria-current={highlighted ? "time" : undefined}>
-                    <th scope="row" className={cn("sticky left-0 z-10 max-w-[7.5rem] border-r border-b border-border px-2 py-1.5 text-left", highlighted ? "bg-accent" : "bg-card")}>
+                    <th scope="row" className={cn("sticky left-0 z-10 max-w-[8.5rem] border-r border-b border-border px-2 py-1.5 text-left", highlighted ? "bg-accent" : "bg-card")}>
                       <span className="type-data block font-medium">{formatTime(firstTime(service))}</span>
                       <span className="block truncate text-[11px] font-normal text-muted-foreground" title={`${service.origin} to ${service.destination}`}>to {service.destination}</span>
                     </th>
@@ -270,17 +266,17 @@ export const LineTimetable = memo(function LineTimetable({
           </table>
         </div>
       )}
-    </section>
+    </div>
   );
 });
 
 function PanelMessage({ icon, title, detail }: { icon: React.ReactNode; title: string; detail?: string }) {
   return (
-    <section className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-xl border border-border bg-card px-5 text-center shadow-sm">
+    <div className="flex h-full min-h-[18rem] flex-col items-center justify-center px-5 text-center">
       <span className="mb-2 text-muted-foreground [&>svg]:size-5">{icon}</span>
-      <h2 className="type-heading text-sm">{title}</h2>
+      <p className="type-heading text-sm">{title}</p>
       {detail && <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{detail}</p>}
-    </section>
+    </div>
   );
 }
 

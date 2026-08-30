@@ -15,12 +15,9 @@ export function DelayBadge({ delayMin, className }: DelayBadgeProps) {
   return (
     <Badge
       variant="outline"
-      className={cn(
-        "gap-0.5 border-amber-500/40 bg-amber-500/15 px-1.5 font-semibold text-amber-700 dark:text-amber-400",
-        className,
-      )}
+      className={cn("gap-0.5 border-warning-border/60 bg-warning/15 px-1.5 font-semibold text-warning", className)}
     >
-      +<NumberTicker value={delayMin} className="text-amber-700 dark:text-amber-400" /> min
+      +<NumberTicker value={delayMin} className="text-warning" /> min
     </Badge>
   );
 }

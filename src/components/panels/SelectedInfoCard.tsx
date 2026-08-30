@@ -5,7 +5,7 @@ import { EtaText } from "../EtaText";
 import { DelayBadge } from "../DelayBadge";
 import type { LiveRun, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
-import type { FavouriteStationController } from "../../hooks/useFavouriteStation";
+import type { CommutePreferencesController } from "../../hooks/useCommutePreferences";
 import { delayMinutesFor, soonestPerLine, upcomingStopsForStation } from "../../data/departures";
 import { useNow } from "../../hooks/useNow";
 import { cn } from "../../lib/utils";
@@ -16,12 +16,12 @@ interface SelectedInfoCardProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  favourite: FavouriteStationController;
+  commute: CommutePreferencesController;
   onClose: () => void;
 }
 
 /**
- * Renders station or train details in the left pane from `selection` state.
+ * Renders details for the station or train picked on the map.
  *
  * A local one-second clock limits ETA re-renders to this component.
  */
@@ -31,7 +31,7 @@ export function SelectedInfoCard({
   lineNameById,
   lineColorById,
   runs,
-  favourite,
+  commute,
   onClose,
 }: SelectedInfoCardProps) {
   const now = useNow(1000);
@@ -39,7 +39,7 @@ export function SelectedInfoCard({
   if (!selection) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
-        Click a station or train on the map to see live departures.
+        Select a station or train on the map to see live departures.
       </div>
     );
   }
@@ -48,10 +48,10 @@ export function SelectedInfoCard({
     const station = stationsById.get(selection.stationId);
     if (!station) return null;
     const departures = soonestPerLine(upcomingStopsForStation(station, runs, now));
-    const starred = favourite.isFavourite(station.id);
+    const isToCityStation = commute.toCityStationId === station.id;
 
     return (
-      <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-sky-500 bg-card/80 p-4 shadow-sm backdrop-blur-sm dark:border-l-foreground/60">
+      <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-brand bg-card/80 p-4 shadow-sm backdrop-blur-sm">
         <div className="flex items-start justify-between gap-2">
           <div className="type-heading min-w-0 flex-1 truncate text-base">{station.name}</div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -60,13 +60,13 @@ export function SelectedInfoCard({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  onClick={() => favourite.toggle(station.id)}
-                  className={cn("text-muted-foreground", starred && "text-amber-500")}
+                  onClick={() => commute.setStation("toCity", isToCityStation ? null : station.id)}
+                  className={cn("text-muted-foreground", isToCityStation && "text-warning")}
                 >
-                  <Star className={cn("size-4", starred && "fill-amber-400 text-amber-500")} />
+                  <Star className={cn("size-4", isToCityStation && "fill-warning text-warning")} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{starred ? "Remove as my station" : "Set as my station"}</TooltipContent>
+              <TooltipContent>{isToCityStation ? "Remove as my to-city station" : "Set as my to-city station"}</TooltipContent>
             </Tooltip>
             <Button size="icon-sm" variant="ghost" onClick={onClose} className="text-muted-foreground">
               <X className="size-4" />

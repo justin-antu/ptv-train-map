@@ -1,23 +1,27 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Header } from "./components/Header";
-import { Footer } from "./components/Footer";
-import { MapView, type MapViewHandle } from "./components/MapView";
-import { LeftPane } from "./components/panels/LeftPane";
-import { LineTimetable } from "./components/panels/LineTimetable";
-import { BorderBeam } from "./components/ui/border-beam";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppShell } from "./components/layout/AppShell";
+import { CommuteSection } from "./components/sections/CommuteSection";
+import { LiveDeparturesSection } from "./components/sections/LiveDeparturesSection";
+import { RoutePlannerSection } from "./components/sections/RoutePlannerSection";
+import { NetworkSection } from "./components/sections/NetworkSection";
+import { TimetableSection } from "./components/sections/TimetableSection";
+import { DisruptionsSection } from "./components/sections/DisruptionsSection";
+import { CommuteSettingsDialog } from "./components/CommuteSettingsDialog";
+import type { MapViewHandle } from "./components/MapView";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
 import { useLiveData } from "./hooks/useLiveData";
 import { useTimetableData } from "./hooks/useTimetableData";
-import { useVisibleLines } from "./hooks/useVisibleLines";
-import { useFavouriteStation } from "./hooks/useFavouriteStation";
+import { useCommutePreferences } from "./hooks/useCommutePreferences";
+import { useFavouriteLineFilter } from "./hooks/useFavouriteLineFilter";
 import { useNotifications } from "./hooks/useNotifications";
+import { aggregateDisruptions, summariseLineDisruptions } from "./data/disruptions";
+import { defaultCommuteDirection, otherDirection } from "./shared/commute";
 import { countActiveRuns } from "./trains/interpolate";
-import { RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
+import { APP_TITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
 import type { Selection } from "./shared/selection";
 import type { StationStatic } from "./shared/types";
-import { APP_TITLE, NETWORK_SUBTITLE } from "./config";
 
 export default function App() {
   const [theme, setTheme] = useTheme();
@@ -25,18 +29,26 @@ export default function App() {
   const live = useLiveData(staticData);
   const timetable = useTimetableData();
   const [selection, setSelection] = useState<Selection>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const mapRef = useRef<MapViewHandle>(null);
 
   const allLineIds = useMemo(() => staticData?.lines.map((l) => l.id) ?? [], [staticData]);
-  const visibleLines = useVisibleLines(allLineIds);
-  const favourite = useFavouriteStation();
+  const commute = useCommutePreferences();
+  const lineFilter = useFavouriteLineFilter(commute.favouriteLineIds, allLineIds);
+  const preferredDirection = useMemo(() => defaultCommuteDirection(), []);
 
   const stationsById = useMemo(() => new Map((staticData?.stations ?? []).map((s) => [s.id, s])), [staticData]);
   const lineNameById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.name])), [staticData]);
   const lineColorById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.color])), [staticData]);
 
-  const favouriteStation = favourite.favouriteId ? stationsById.get(favourite.favouriteId) : undefined;
-  const notifications = useNotifications(favourite.favouriteId, favouriteStation, live.runs);
+  // Notifications follow the time-of-day leg rather than whichever tab is on
+  // screen, so glancing at the return trip does not move the alerts.
+  const notifyStationId = useMemo(
+    () => commute.stationIdFor(preferredDirection) ?? commute.stationIdFor(otherDirection(preferredDirection)),
+    [commute, preferredDirection],
+  );
+  const notifyStation = notifyStationId ? stationsById.get(notifyStationId) : undefined;
+  const notifications = useNotifications(notifyStationId, notifyStation, live.runs);
 
   // Count only runs within the active display window. The snapshot also
   // contains future departures. Recompute once per live-data refresh.
@@ -44,6 +56,40 @@ export default function App() {
     () => countActiveRuns(live.runs, Date.now(), { staleAfterMs: RUN_STALE_AFTER_MS, showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS }),
     [live.runs],
   );
+
+  const alertCount = useMemo(
+    () => aggregateDisruptions(live.disruptionsByLine, allLineIds).length,
+    [live.disruptionsByLine, allLineIds],
+  );
+
+  const linesActive = useMemo(() => new Set(live.runs.map((run) => run.lineId)).size, [live.runs]);
+
+  /**
+   * Lines worth warning this commuter about: their chosen lines, or failing
+   * that, whichever lines serve their commute stations.
+   */
+  const commuteDisruptions = useMemo(() => {
+    const relevant = new Set<string>();
+    if (lineFilter.hasPreference) {
+      for (const lineId of lineFilter.lineIds) relevant.add(lineId);
+    } else {
+      for (const stationId of [commute.toCityStationId, commute.fromCityStationId]) {
+        const station = stationId ? stationsById.get(stationId) : undefined;
+        for (const lineId of station?.lineIds ?? []) relevant.add(lineId);
+      }
+    }
+    return summariseLineDisruptions(
+      live.disruptionsByLine,
+      allLineIds.filter((lineId) => relevant.has(lineId)),
+    );
+  }, [lineFilter, commute.toCityStationId, commute.fromCityStationId, stationsById, allLineIds, live.disruptionsByLine]);
+
+  // Prompt once on a first visit so the commute board is never left empty
+  // without an obvious way to fill it.
+  useEffect(() => {
+    if (staticData && !commute.hasCommute) setSettingsOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staticData]);
 
   const flyToAndSelect = useCallback((station: StationStatic) => {
     mapRef.current?.flyToStation(station);
@@ -82,65 +128,94 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex min-h-dvh flex-col bg-background text-foreground lg:h-dvh lg:overflow-hidden">
-        <Header theme={theme} onThemeChange={setTheme} isDemo={live.isDemo} generatedAtUtc={live.generatedAtUtc} trainCount={trainsRunningNow} />
-
-        <div className="flex flex-1 flex-col lg:grid lg:grid-cols-[20%_60%_20%] lg:grid-rows-[1fr] lg:overflow-hidden">
-          <aside className="side-pane-grid thin-scrollbar order-2 border-t border-border p-3 lg:order-none lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-r">
-            <LeftPane
+      <AppShell
+        theme={theme}
+        onThemeChange={setTheme}
+        isDemo={live.isDemo}
+        generatedAtUtc={live.generatedAtUtc}
+        trainCount={trainsRunningNow}
+        alertCount={alertCount}
+        hasCriticalAlert={commuteDisruptions.criticalLineIds.length > 0}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onRefresh={live.refresh}
+        sections={{
+          commute: (
+            <div className="flex flex-col gap-3 sm:gap-4">
+              <CommuteSection
+                commute={commute}
+                stationsById={stationsById}
+                runs={live.runs}
+                lineNameById={lineNameById}
+                lineColorById={lineColorById}
+                lineFilter={lineFilter}
+                disruptionSummary={commuteDisruptions}
+                notificationsEnabled={notifications.enabled}
+                generatedAtUtc={live.generatedAtUtc}
+                isDemo={live.isDemo}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onStationClick={flyToAndSelect}
+              />
+              <LiveDeparturesSection
+                commute={commute}
+                stationsById={stationsById}
+                runs={live.runs}
+                lineNameById={lineNameById}
+                lineColorById={lineColorById}
+                lineFilter={lineFilter}
+                initialDirection={preferredDirection}
+              />
+              <RoutePlannerSection />
+            </div>
+          ),
+          network: (
+            <NetworkSection
+              ref={mapRef}
               staticData={staticData}
               stationsById={stationsById}
               lineNameById={lineNameById}
               lineColorById={lineColorById}
               runs={live.runs}
-              selection={selection}
-              onClearSelection={handleBackgroundClick}
-              onStationSearchSelect={flyToAndSelect}
-              onFavouriteStationClick={flyToAndSelect}
-              visibleLines={visibleLines}
+              visibleLineIds={lineFilter.effectiveLineIds}
               disruptionsByLine={live.disruptionsByLine}
-              favourite={favourite}
-              notifications={notifications}
-            />
-          </aside>
-
-          <main
-            className="relative isolate order-1 h-[58vh] min-h-[340px] overflow-hidden lg:order-none lg:h-full lg:min-h-0"
-            aria-label={`${NETWORK_SUBTITLE} live map`}
-          >
-            <MapView
-              ref={mapRef}
-              staticData={staticData}
-              stationsById={stationsById}
-              lineColorById={lineColorById}
-              runs={live.runs}
-              visibleLineIds={visibleLines.visible}
+              selection={selection}
+              commute={commute}
+              trainsRunning={trainsRunningNow}
+              linesActive={linesActive}
+              disruptionCount={alertCount}
               onStationSelect={handleStationSelect}
               onTrainSelect={handleTrainSelect}
               onBackgroundClick={handleBackgroundClick}
+              onClearSelection={handleBackgroundClick}
             />
-            <BorderBeam
-              size={140}
-              duration={10}
-              borderWidth={1}
-              colorFrom="rgba(148, 163, 184, 0.3)"
-              colorTo="rgba(0, 114, 206, 0.82)"
-              className="opacity-70 dark:opacity-60"
-            />
-          </main>
-
-          <aside className="side-pane-grid order-3 h-[42rem] min-h-[32rem] border-t border-border p-3 lg:order-none lg:block lg:h-full lg:min-h-0 lg:border-t-0 lg:border-l">
-            <LineTimetable
+          ),
+          timetable: (
+            <TimetableSection
               data={timetable.data}
               loading={timetable.loading}
               error={timetable.error}
               disruptionsByLine={live.disruptionsByLine}
             />
-          </aside>
-        </div>
+          ),
+          alerts: (
+            <DisruptionsSection
+              disruptionsByLine={live.disruptionsByLine}
+              lineOrder={allLineIds}
+              lineNameById={lineNameById}
+              lineColorById={lineColorById}
+              lineFilter={lineFilter}
+            />
+          ),
+        }}
+      />
 
-        <Footer />
-      </div>
+      <CommuteSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        stations={staticData.stations}
+        lines={staticData.lines}
+        commute={commute}
+        notifications={notifications}
+      />
     </TooltipProvider>
   );
 }
