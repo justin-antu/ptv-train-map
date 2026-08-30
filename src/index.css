@@ -1,26 +1,11 @@
-@font-face {
-  font-family: "Geist";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 100 900;
-  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2-variations");
-}
-
-@font-face {
-  font-family: "Geist Mono";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 100 900;
-  src: url("@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
-}
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  /* One monospace family across the whole UI, matching the timetable aesthetic. */
+  --font-sans: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --background: 0 0% 100%;
   --foreground: 222 47% 11%;
   --card: 0 0% 100%;
@@ -35,8 +20,12 @@
   --muted-foreground: 220 9% 42%;
   --accent: 220 25% 93%;
   --accent-foreground: 222 47% 11%;
+  --brand: 225 66% 24%;
+  --brand-foreground: 210 40% 98%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 210 40% 98%;
+  --destructive-surface: 0 86% 97%;
+  --destructive-border: 0 79% 86%;
   --border: 220 15% 88%;
   --input: 220 15% 88%;
   --ring: 225 66% 24%;
@@ -45,6 +34,14 @@
   --warning-surface: 48 100% 96%;
   --warning-muted: 48 96% 89%;
   --warning-border: 46 97% 65%;
+  --success: 152 56% 32%;
+  --success-foreground: 152 56% 24%;
+  --success-surface: 150 60% 96%;
+  --success-border: 150 40% 78%;
+  --info: 205 87% 36%;
+  --info-foreground: 205 87% 28%;
+  --info-surface: 205 100% 96%;
+  --info-border: 205 75% 80%;
   --radius: 0.75rem;
 }
 
@@ -63,8 +60,12 @@
   --muted-foreground: 240 5% 65%;
   --accent: 240 4% 16%;
   --accent-foreground: 0 0% 98%;
+  --brand: 205 100% 45%;
+  --brand-foreground: 0 0% 98%;
   --destructive: 0 72% 58%;
   --destructive-foreground: 0 0% 98%;
+  --destructive-surface: 240 6% 10%;
+  --destructive-border: 0 55% 34%;
   --border: 240 4% 26%;
   --input: 240 4% 32%;
   --ring: 240 5% 84%;
@@ -73,6 +74,14 @@
   --warning-surface: 240 6% 10%;
   --warning-muted: 240 4% 16%;
   --warning-border: 32 81% 29%;
+  --success: 152 62% 45%;
+  --success-foreground: 150 65% 72%;
+  --success-surface: 240 6% 10%;
+  --success-border: 152 40% 28%;
+  --info: 205 90% 55%;
+  --info-foreground: 205 88% 78%;
+  --info-surface: 240 6% 10%;
+  --info-border: 205 55% 32%;
 }
 
 @layer base {
@@ -100,6 +109,22 @@
     font: inherit;
     letter-spacing: inherit;
   }
+  /*
+   * Controls opt out of the browser's double-tap-to-zoom gesture. Two quick
+   * taps on a control — easily done on the card headers, which toggle collapse —
+   * otherwise zooms the page into that element and leaves it there, since
+   * nothing zooms back out but a manual pinch. Pinch zoom itself is untouched.
+   */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [role="option"] {
+    touch-action: manipulation;
+  }
   input::placeholder {
     opacity: 0.78;
   }
@@ -122,18 +147,6 @@
   .type-numeric {
     font-variant-numeric: tabular-nums;
   }
-}
-
-/* Static background treatment for side panes. */
-.side-pane-grid {
-  background-color: hsl(var(--background));
-  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.12) 0.8px, transparent 0.9px);
-  background-position: 0 0;
-  background-size: 18px 18px;
-}
-
-.dark .side-pane-grid {
-  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.16) 0.8px, transparent 0.9px);
 }
 
 /*

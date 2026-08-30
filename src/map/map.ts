@@ -3,8 +3,18 @@ import type { StyleSpecification } from "maplibre-gl";
 import type { NetworkStaticData } from "../shared/types";
 
 /**
- * Keyless CARTO Positron raster style. The basemap remains light in both UI
- * themes; dark mode applies only to the surrounding interface. Avoiding
+ * CARTO serves raster tiles requested without a key under a repeated "API key
+ * required" watermark, and does so with HTTP 200, so nothing surfaces as a tile
+ * error. The key is inlined into the bundle by Vite and is public by design —
+ * CARTO issues it against a nominated domain. It is left off entirely when
+ * unset, so a build without one falls back to the watermark rather than
+ * requesting `?key=undefined`.
+ */
+const TILE_KEY_PARAM = import.meta.env.VITE_CARTO_BASEMAP_KEY ? `?key=${import.meta.env.VITE_CARTO_BASEMAP_KEY}` : "";
+
+/**
+ * CARTO Positron raster style. The basemap remains light in both UI themes;
+ * dark mode applies only to the surrounding interface. Avoiding
  * `map.setStyle()` prevents custom source and layer teardown during theme
  * changes and eliminates a full map reload.
  */
@@ -16,13 +26,10 @@ function buildPositronStyle(): StyleSpecification {
     sources: {
       [sourceId]: {
         type: "raster",
-        // CARTO distributes keyless tile requests across four subdomains.
-        tiles: [
-          `https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
-          `https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
-          `https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
-          `https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`,
-        ],
+        // CARTO distributes tile requests across four subdomains.
+        tiles: ["a", "b", "c", "d"].map(
+          (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png${TILE_KEY_PARAM}`,
+        ),
         tileSize: 256,
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',

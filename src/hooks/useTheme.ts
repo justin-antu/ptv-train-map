@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { browserThemeColorFor } from "../theme/applyThemeTokens";
+import type { ThemeMode } from "../theme/types";
 
-export type Theme = "light" | "dark";
+export type Theme = ThemeMode;
 
 const THEME_STORAGE_KEY = "wimt:theme";
-const THEME_COLOR_BY_THEME: Record<Theme, string> = {
-  light: "#152c6b",
-  dark: "#000000",
-};
 
 function loadInitialTheme(): Theme {
   try {
@@ -28,8 +26,9 @@ function saveTheme(theme: Theme): void {
 
 /**
  * Persists the light/dark interface preference and synchronizes the `<html>`
- * class and browser `theme-color`. The MapLibre basemap remains light in both
- * interface themes.
+ * class and browser `theme-color`. Token values come from the theme stylesheet
+ * installed by `installThemeTokens`, so the class toggle alone repaints the
+ * interface. The MapLibre basemap remains light in both interface themes.
  */
 export function useTheme(): [Theme, (theme: Theme) => void] {
   const [theme, setThemeState] = useState<Theme>(loadInitialTheme);
@@ -38,7 +37,7 @@ export function useTheme(): [Theme, (theme: Theme) => void] {
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.style.colorScheme = theme;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", THEME_COLOR_BY_THEME[theme]);
+    if (meta) meta.setAttribute("content", browserThemeColorFor(theme));
   }, [theme]);
 
   const setTheme = useCallback((next: Theme) => {

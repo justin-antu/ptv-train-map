@@ -32,6 +32,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Without this the deployed tiles carry CARTO's "API key required"
+          # watermark, even though local development looks correct.
+          VITE_CARTO_BASEMAP_KEY: ${{ secrets.CARTO_BASEMAP_KEY }}
 
       - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
