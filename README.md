@@ -53,7 +53,7 @@ The frontend polls the committed live snapshot every 30 seconds and recomputes t
 
 ### Frontend
 
-The interface is implemented with React 19, TypeScript, Tailwind CSS, Radix UI primitives, Motion, local Magic UI-style components, and MapLibre GL JS. The map uses keyless CARTO Positron raster tiles and does not change style when the interface theme changes.
+The interface is implemented with React 19, TypeScript, Tailwind CSS, Radix UI primitives, Motion, local Magic UI-style components, and MapLibre GL JS. The map uses CARTO Positron raster tiles, keyed by `VITE_CARTO_BASEMAP_KEY`, and does not change style when the interface theme changes.
 
 Content is organised into five sections — Departures, Plan, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all five as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
 
@@ -139,6 +139,7 @@ Set:
 
 - `PTV_DEV_ID`: PTV Timetable API developer ID.
 - `PTV_API_KEY`: PTV Timetable API signing key.
+- `VITE_CARTO_BASEMAP_KEY`: CARTO basemap key, free from <https://carto.com/basemaps/apikey>. CARTO watermarks raster tiles requested without one. Unlike the PTV credentials, the `VITE_` prefix means this value is inlined into the browser bundle and is public by design; CARTO issues it against a nominated domain.
 
 Do not commit `.env`.
 
