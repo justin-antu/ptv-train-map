@@ -30,7 +30,9 @@ export function MobileTabBar({ activeSection, onSelect, alertCount, hasCriticalA
                 onClick={() => onSelect(id)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors",
+                  // 10px, not 11px: five tabs leave ~72px each at 360px, and
+                  // "Departures" has no space to wrap on if it overflows.
+                  "relative flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] font-medium transition-colors",
                   isActive ? "text-brand" : "text-muted-foreground",
                 )}
               >

@@ -124,7 +124,10 @@ export function LiveDeparturesSection({
     <SectionCard id="departures" title="Live Departures" description={description}>
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/* Phones take one row per decision: which line, then which journey.
+              Below md the two station pickers share the row instead of holding a
+              fixed width, so both stay legible next to the swap button. */}
+          <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:gap-1.5">
             <SearchableSelect
               items={lineItems}
               value={preferences.lineId}
@@ -133,118 +136,127 @@ export function LiveDeparturesSection({
               emptyOption="All lines"
               label="Line"
               size="sm"
-              className="w-[9.5rem]"
+              className="w-full md:w-[9.5rem]"
             />
-            <SearchableSelect
-              items={stationItems}
-              value={preferences.originStationId}
-              onChange={preferences.setOrigin}
-              placeholder="Choose station"
-              quickPickIds={CBD_QUICK_PICK_STATION_IDS}
-              label="Departing from"
-              size="sm"
-              className="w-[11rem]"
-            />
-            {/* Marked disabled rather than truly disabled: a disabled button
-                swallows pointer events, hiding the tooltip that explains why. */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-disabled={!preferences.destinationStationId}
-                  onClick={() => preferences.swap()}
-                  className={cn("shrink-0 text-muted-foreground", !preferences.destinationStationId && "opacity-40")}
-                >
-                  <ArrowLeftRight className="size-4" />
-                  <span className="sr-only">Reverse the journey</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {preferences.destinationStationId ? "Reverse the journey" : "Set a destination to reverse the journey"}
-              </TooltipContent>
-            </Tooltip>
-            <SearchableSelect
-              items={stationItems}
-              value={preferences.destinationStationId}
-              onChange={preferences.setDestination}
-              placeholder="Any destination"
-              emptyOption="Any destination"
-              label="Travelling to"
-              size="sm"
-              className="w-[11rem]"
-            />
-            {origin && (
+            <div className="flex min-w-0 items-center gap-1.5">
+              <SearchableSelect
+                items={stationItems}
+                value={preferences.originStationId}
+                onChange={preferences.setOrigin}
+                placeholder="Choose station"
+                quickPickIds={CBD_QUICK_PICK_STATION_IDS}
+                label="Departing from"
+                size="sm"
+                className="flex-1 md:w-[11rem] md:flex-none"
+              />
+              {/* Marked disabled rather than truly disabled: a disabled button
+                  swallows pointer events, hiding the tooltip that explains why. */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => onShowOnMap(origin)}
-                    className="shrink-0 text-muted-foreground"
+                    aria-disabled={!preferences.destinationStationId}
+                    onClick={() => preferences.swap()}
+                    className={cn("shrink-0 text-muted-foreground", !preferences.destinationStationId && "opacity-40")}
                   >
-                    <MapPinned className="size-4" />
-                    <span className="sr-only">Show {origin.name} on the map</span>
+                    <ArrowLeftRight className="size-4" />
+                    <span className="sr-only">Reverse the journey</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Show on the map</TooltipContent>
+                <TooltipContent>
+                  {preferences.destinationStationId ? "Reverse the journey" : "Set a destination to reverse the journey"}
+                </TooltipContent>
               </Tooltip>
-            )}
+              <SearchableSelect
+                items={stationItems}
+                value={preferences.destinationStationId}
+                onChange={preferences.setDestination}
+                placeholder="Any destination"
+                emptyOption="Any destination"
+                label="Travelling to"
+                size="sm"
+                align="end"
+                className="flex-1 md:w-[11rem] md:flex-none"
+              />
+              {origin && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onShowOnMap(origin)}
+                      className="hidden shrink-0 text-muted-foreground md:inline-flex"
+                    >
+                      <MapPinned className="size-4" />
+                      <span className="sr-only">Show {origin.name} on the map</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Show on the map</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           </div>
 
-          <DisruptionIndicators summary={disruptionSummary} lineNameById={lineNameById} onView={() => navigate("alerts")} />
+          {/* Alerts and freshness lead on phones, above the pickers. Ordering
+              rather than moving them keeps the tab sequence on the controls
+              first, and `contents` drops the wrapper at xl so both groups take
+              the middle and right of the bar instead of sharing one line. */}
+          <div className="order-first flex flex-wrap items-center gap-x-3 gap-y-1.5 xl:contents">
+            <DisruptionIndicators summary={disruptionSummary} lineNameById={lineNameById} onView={() => navigate("alerts")} />
 
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className={cn("flex items-center gap-1.5", freshness.stale ? "text-warning" : "text-muted-foreground")}>
-              <span className={cn("size-1.5 rounded-full", isDemo || freshness.stale ? "bg-warning" : "bg-success")} />
-              {isDemo ? "Sample preview" : freshness.text}
-            </span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-pressed={notifications.enabled}
-                  onClick={() => void notifications.toggle()}
-                  className={cn("shrink-0", notifications.enabled ? "text-brand" : "text-muted-foreground")}
-                >
-                  {notifications.enabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
-                  <span className="sr-only">
-                    Arrival alerts {notifications.enabled ? "on" : "off"}
-                  </span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {notifications.enabled ? "Arrival alerts on — tap to turn off" : "Notify me ~2 min before a train arrives"}
-              </TooltipContent>
-            </Tooltip>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground">
-                  <Settings2 className="size-4" />
-                  <span className="sr-only">Board settings</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 text-xs">
-                <p className="type-label text-muted-foreground">Board settings</p>
-                <p className="mt-2 leading-relaxed text-muted-foreground">
-                  Your line and stations are saved on this device only.
-                </p>
-                {notifications.message && <p className="mt-2 text-destructive">{notifications.message}</p>}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={preferences.reset}
-                  className="mt-3 w-full border border-destructive/60 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <RotateCcw aria-hidden="true" />
-                  Reset
-                </Button>
-              </PopoverContent>
-            </Popover>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className={cn("flex items-center gap-1.5", freshness.stale ? "text-warning" : "text-muted-foreground")}>
+                <span className={cn("size-1.5 rounded-full", isDemo || freshness.stale ? "bg-warning" : "bg-success")} />
+                {isDemo ? "Sample preview" : freshness.text}
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-pressed={notifications.enabled}
+                    onClick={() => void notifications.toggle()}
+                    className={cn("shrink-0", notifications.enabled ? "text-brand" : "text-muted-foreground")}
+                  >
+                    {notifications.enabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+                    <span className="sr-only">
+                      Arrival alerts {notifications.enabled ? "on" : "off"}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {notifications.enabled ? "Arrival alerts on — tap to turn off" : "Notify me ~2 min before a train arrives"}
+                </TooltipContent>
+              </Tooltip>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground">
+                    <Settings2 className="size-4" />
+                    <span className="sr-only">Board settings</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-64 text-xs">
+                  <p className="type-label text-muted-foreground">Board settings</p>
+                  <p className="mt-2 leading-relaxed text-muted-foreground">
+                    Your line and stations are saved on this device only.
+                  </p>
+                  {notifications.message && <p className="mt-2 text-destructive">{notifications.message}</p>}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={preferences.reset}
+                    className="mt-3 w-full border border-destructive/60 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <RotateCcw aria-hidden="true" />
+                    Reset
+                  </Button>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
         </div>
 

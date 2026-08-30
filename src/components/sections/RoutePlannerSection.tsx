@@ -1,8 +1,8 @@
 import { ArrowRight, Clock3, MapPin, Navigation } from "lucide-react";
 import { SectionCard } from "../layout/SectionCard";
+import { useSectionNavigation } from "../layout/sectionNavigation";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 /** Placeholder cards standing in for the three suggested journeys. */
 const QUICK_VIEW_SLOTS = ["Fastest", "Fewest changes", "Leaving soon"];
@@ -11,15 +11,12 @@ const QUICK_VIEW_SLOTS = ["Fastest", "Fewest changes", "Leaving soon"];
  * Layout for the planned journey search. The controls are intentionally inert:
  * planning needs an origin-to-destination service the app does not have yet, so
  * only the shape is committed here.
- *
- * Collapsed by default on phones, so an unfinished form does not sit between the
- * commuter and their departures.
  */
 export function RoutePlannerSection() {
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const navigate = useSectionNavigation();
 
   return (
-    <SectionCard id="planner" title="Plan a trip" description="Search any journey across the network" defaultCollapsed={!isDesktop}>
+    <SectionCard id="planner" title="Plan a trip" badge="Beta" description="Search any journey across the network">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,12rem)_auto]">
         <label className="min-w-0">
           <span className="type-label text-muted-foreground">From</span>
@@ -54,7 +51,15 @@ export function RoutePlannerSection() {
       </div>
 
       <p className="mt-3 text-[11px] text-muted-foreground">
-        Trip planning is not built yet. Use your commute board above for live departures in the meantime.
+        Trip planning is not built yet.{" "}
+        <button
+          type="button"
+          onClick={() => navigate("departures")}
+          className="font-medium underline underline-offset-2 hover:text-foreground"
+        >
+          Check live departures
+        </button>{" "}
+        in the meantime.
       </p>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-3">

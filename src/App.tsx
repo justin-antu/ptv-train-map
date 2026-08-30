@@ -133,24 +133,22 @@ export default function App() {
         onRefresh={live.refresh}
         sections={{
           departures: (
-            <div className="flex flex-col gap-3 sm:gap-4">
-              <LiveDeparturesSection
-                lines={staticData.lines}
-                stations={staticData.stations}
-                stationsById={stationsById}
-                runs={live.runs}
-                lineNameById={lineNameById}
-                lineColorById={lineColorById}
-                preferences={preferences}
-                disruptionSummary={boardDisruptions}
-                notifications={notifications}
-                generatedAtUtc={live.generatedAtUtc}
-                isDemo={live.isDemo}
-                onShowOnMap={flyToAndSelect}
-              />
-              <RoutePlannerSection />
-            </div>
+            <LiveDeparturesSection
+              lines={staticData.lines}
+              stations={staticData.stations}
+              stationsById={stationsById}
+              runs={live.runs}
+              lineNameById={lineNameById}
+              lineColorById={lineColorById}
+              preferences={preferences}
+              disruptionSummary={boardDisruptions}
+              notifications={notifications}
+              generatedAtUtc={live.generatedAtUtc}
+              isDemo={live.isDemo}
+              onShowOnMap={flyToAndSelect}
+            />
           ),
+          planner: <RoutePlannerSection />,
           network: (
             <NetworkSection
               ref={mapRef}

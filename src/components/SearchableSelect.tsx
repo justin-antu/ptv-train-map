@@ -28,6 +28,12 @@ interface SearchableSelectProps {
   /** Screen-reader name for the control. */
   label: string;
   size?: "sm" | "default";
+  /**
+   * Trigger edge the result panel is anchored to. The panel has a minimum width
+   * of its own, so a narrow trigger at the right of a row needs `end` to stop it
+   * overhanging the card.
+   */
+  align?: "start" | "end";
   className?: string;
 }
 
@@ -48,6 +54,7 @@ export function SearchableSelect({
   quickPickIds,
   label,
   size = "default",
+  align = "start",
   className,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
@@ -140,11 +147,14 @@ export function SearchableSelect({
       {open && (
         <div
           className={cn(
-            "absolute top-full left-0 z-40 mt-1 w-full min-w-[13rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
+            "absolute top-full z-40 mt-1 w-full min-w-[13rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
+            align === "end" ? "right-0" : "left-0",
           )}
         >
           <div className="relative border-b border-border">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            {/* The field keeps the base 16px on phones: iOS zooms the page in on
+                a focused field below that, and never zooms back out. */}
             <Input
               ref={inputRef}
               value={query}
@@ -169,7 +179,7 @@ export function SearchableSelect({
               aria-label={`Search ${label}`}
               aria-controls={listId}
               aria-activedescendant={matches.visible[highlight] ? `${listId}-${matches.visible[highlight].id}` : undefined}
-              className="h-9 border-0 pl-9 text-xs shadow-none focus-visible:ring-0"
+              className="h-9 border-0 pl-9 shadow-none focus-visible:ring-0 md:text-xs"
             />
           </div>
 

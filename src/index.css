@@ -109,6 +109,22 @@
     font: inherit;
     letter-spacing: inherit;
   }
+  /*
+   * Controls opt out of the browser's double-tap-to-zoom gesture. Two quick
+   * taps on a control — easily done on the card headers, which toggle collapse —
+   * otherwise zooms the page into that element and leaves it there, since
+   * nothing zooms back out but a manual pinch. Pinch zoom itself is untouched.
+   */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [role="option"] {
+    touch-action: manipulation;
+  }
   input::placeholder {
     opacity: 0.78;
   }

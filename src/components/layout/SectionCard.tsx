@@ -7,6 +7,8 @@ interface SectionCardProps {
   /** Doubles as the desktop scroll-anchor target and collapse storage key, e.g. `departures`. */
   id: string;
   title: string;
+  /** Short status chip beside the title, e.g. `Beta`. */
+  badge?: string;
   description?: string;
   /** Controls rendered beside the title, outside the collapse button. */
   actions?: ReactNode;
@@ -27,6 +29,7 @@ interface SectionCardProps {
 export function SectionCard({
   id,
   title,
+  badge,
   description,
   actions,
   defaultCollapsed = false,
@@ -60,8 +63,15 @@ export function SectionCard({
             aria-hidden="true"
           />
           <span className="min-w-0">
-            <span id={`${id}-title`} className="type-heading block text-sm sm:text-base">
-              {title}
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span id={`${id}-title`} className="type-heading text-sm sm:text-base">
+                {title}
+              </span>
+              {badge && (
+                <span className="type-label rounded-full border border-brand/40 bg-brand/10 px-1.5 text-[9px] leading-4 text-brand">
+                  {badge}
+                </span>
+              )}
             </span>
             {description && <span className="mt-0.5 block text-[11px] text-muted-foreground sm:text-xs">{description}</span>}
           </span>
