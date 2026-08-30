@@ -181,10 +181,6 @@
   background: none;
 }
 
-.maplibregl-ctrl-top-right {
-  top: env(safe-area-inset-top, 0);
-}
-
 .train-marker {
   /* Absolute positioning keeps MapLibre's translate transform relative to the
    * map container origin. */
