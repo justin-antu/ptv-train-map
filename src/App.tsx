@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import trainLogo from "./assets/train-logo.png";
 import { AppShell } from "./components/layout/AppShell";
 import { LiveDeparturesSection } from "./components/sections/LiveDeparturesSection";
 import { RoutePlannerSection } from "./components/sections/RoutePlannerSection";
@@ -113,7 +114,7 @@ export default function App() {
   if (!staticData) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 text-center">
-        <span className="animate-bounce text-4xl">🚆</span>
+        <img src={trainLogo} alt="" width={193} height={108} className="h-12 w-auto animate-bounce select-none sm:h-14" />
         <p className="text-sm text-muted-foreground">Loading {APP_TITLE}…</p>
       </div>
     );

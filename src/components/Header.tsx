@@ -1,4 +1,5 @@
 import { memo } from "react";
+import trainLogo from "../assets/train-logo.png";
 import { APP_TITLE, NETWORK_SUBTITLE } from "../config";
 import type { Theme } from "../hooks/useTheme";
 import { cn } from "../lib/utils";
@@ -31,9 +32,15 @@ export const Header = memo(function Header({
     <header className="sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="text-2xl" aria-hidden="true">
-            🚆
-          </span>
+          {/* Decorative: the adjacent heading already names the app. */}
+          <img
+            src={trainLogo}
+            alt=""
+            width={193}
+            height={108}
+            draggable={false}
+            className="h-7 w-auto shrink-0 select-none sm:h-9"
+          />
           <div className="min-w-0">
             <TextAnimate
               className="type-heading truncate text-sm leading-tight transition-opacity duration-200 hover:opacity-75 motion-reduce:transition-none motion-reduce:hover:opacity-100 sm:text-base"
