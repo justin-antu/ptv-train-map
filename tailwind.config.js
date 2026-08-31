@@ -10,6 +10,13 @@ export default {
         sans: ["var(--font-sans)"],
         mono: ["var(--font-mono)"],
       },
+      // Below Tailwind's `xs` (0.75rem) the codebase previously reached for
+      // arbitrary pixel values, which ignore the browser's font-size setting.
+      // These are the rem equivalents; nothing should go smaller than `3xs`.
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+        "3xs": ["0.625rem", { lineHeight: "0.875rem" }],
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",

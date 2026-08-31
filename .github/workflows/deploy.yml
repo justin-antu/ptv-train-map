@@ -30,12 +30,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # A missing secret resolves to an empty string rather than failing, and
+      # CARTO serves watermarked tiles with HTTP 200, so an unset key otherwise
+      # only surfaces as a visual regression on the deployed site.
+      - name: Verify the CARTO basemap key is present
+        env:
+          VITE_CARTO_BASEMAP_KEY: ${{ secrets.VITE_CARTO_BASEMAP_KEY }}
+        run: |
+          if [ -z "${VITE_CARTO_BASEMAP_KEY:-}" ]; then
+            echo "::error::VITE_CARTO_BASEMAP_KEY is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
       - name: Build
         run: npm run build
         env:
-          # Without this the deployed tiles carry CARTO's "API key required"
-          # watermark, even though local development looks correct.
-          VITE_CARTO_BASEMAP_KEY: ${{ secrets.CARTO_BASEMAP_KEY }}
+          VITE_CARTO_BASEMAP_KEY: ${{ secrets.VITE_CARTO_BASEMAP_KEY }}
 
       - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3

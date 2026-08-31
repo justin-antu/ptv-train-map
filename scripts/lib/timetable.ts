@@ -8,10 +8,16 @@ import type {
   NetworkTimetableData,
   TimetableDirection,
   TimetableLine,
+  TimetablePattern,
   TimetableService,
 } from "../../src/shared/types.ts";
 
-export const MELBOURNE_TIMEZONE = "Australia/Melbourne";
+export {
+  MELBOURNE_TIMEZONE,
+  melbourneDateString,
+  melbourneServiceTimeToUtc,
+} from "../../src/shared/melbourneTime.ts";
+import { MELBOURNE_TIMEZONE, melbourneDateString } from "../../src/shared/melbourneTime.ts";
 
 interface TripInfo {
   id: string;
@@ -69,17 +75,6 @@ function compactGtfsDate(value: string): string {
 
 function weekdayIndex(date: string): number {
   return new Date(`${date}T12:00:00Z`).getUTCDay();
-}
-
-export function melbourneDateString(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: MELBOURNE_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 export function melbourneDateRange(dayCount = 8, now = new Date()): string[] {
@@ -373,6 +368,74 @@ async function loadGtfs(gtfsDir: string, dates: string[]) {
   return { routesById, canonicalByStop, trips, stopTimes };
 }
 
+/** Stations that only appear on City Loop workings. */
+const CITY_LOOP_STATION_PATTERN = /^(flagstaff|melbourne central|parliament)$/i;
+/** Stations that only appear on Metro Tunnel workings. */
+const METRO_TUNNEL_STATION_PATTERN = /^(anzac|town hall|state library|parkville|arden)$/i;
+
+/**
+ * Names a stopping pattern the way a rider would ask for it: by where it ends
+ * up, then by the route it takes, then by whether it skips anything.
+ *
+ * Collisions are resolved by the caller, which appends the origin — two
+ * patterns sharing a destination and a routing genuinely differ only in where
+ * they start.
+ */
+function describePattern(stationNames: string[], destination: string): string {
+  const parts = [`${stationNames[0]} → ${destination}`];
+
+  // The GTFS headsign frequently already says "via City Loop"; repeating it
+  // reads as a data bug.
+  if (!/\bvia\b/i.test(destination)) {
+    if (stationNames.some((name) => CITY_LOOP_STATION_PATTERN.test(name))) parts.push("via City Loop");
+    else if (stationNames.some((name) => METRO_TUNNEL_STATION_PATTERN.test(name))) parts.push("via Metro Tunnel");
+  }
+
+  parts.push(`${stationNames.length} stops`);
+  return parts.join(" · ");
+}
+
+function buildPatterns(
+  trips: { key: string; stationKeys: string[]; destination: string }[],
+  stationByKey: Map<string, CanonicalStation>,
+): { patterns: TimetablePattern[]; patternIdByKey: Map<string, string> } {
+  const groups = new Map<string, { stationKeys: string[]; destination: string; count: number }>();
+  for (const trip of trips) {
+    const signature = trip.stationKeys.join(">");
+    const existing = groups.get(signature);
+    if (existing) existing.count += 1;
+    else groups.set(signature, { stationKeys: trip.stationKeys, destination: trip.destination, count: 1 });
+  }
+
+  const ordered = [...groups.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
+  const labelCounts = new Map<string, number>();
+  const patterns: TimetablePattern[] = [];
+  const patternIdBySignature = new Map<string, string>();
+
+  ordered.forEach(([signature, group], index) => {
+    const names = group.stationKeys.map((key) => stationByKey.get(key)?.name ?? key);
+    const baseLabel = describePattern(names, group.destination);
+    const seen = labelCounts.get(baseLabel) ?? 0;
+    labelCounts.set(baseLabel, seen + 1);
+    // Two patterns with the same endpoints and length differ somewhere in the
+    // middle, so a mid-route call is the shortest thing that tells them apart.
+    const label = seen === 0 ? baseLabel : `${baseLabel} · via ${names[Math.floor(names.length / 2)]}`;
+
+    const id = `p${index}`;
+    patternIdBySignature.set(signature, id);
+    patterns.push({
+      id,
+      label,
+      stationIds: group.stationKeys.map((key) => stationByKey.get(key)?.id ?? lineIdFromName(key)),
+      serviceCount: group.count,
+    });
+  });
+
+  const patternIdByKey = new Map<string, string>();
+  for (const trip of trips) patternIdByKey.set(trip.key, patternIdBySignature.get(trip.stationKeys.join(">"))!);
+  return { patterns, patternIdByKey };
+}
+
 function buildDirection(
   directionId: string,
   routeTrips: TripInfo[],
@@ -388,25 +451,40 @@ function buildDirection(
     .filter(({ stops }) => stops.length >= 2);
   if (usable.length === 0) return null;
 
-  const stationKeys = unionStationOrder(usable.map(({ stops }) => canonicalStopSequence(stops, canonicalByStop)));
+  const sequenceByTrip = new Map(usable.map(({ trip, stops }) => [trip.id, canonicalStopSequence(stops, canonicalByStop)]));
+  const stationKeys = unionStationOrder([...sequenceByTrip.values()]);
   const stationByKey = new Map(
     [...canonicalByStop.values()].map((station) => [station.key, station]),
   );
   const columnByStation = new Map(stationKeys.map((key, index) => [key, index]));
   const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const services: TimetableService[] = [];
   const destinationCounts = new Map<string, number>();
 
-  for (const { trip, stops } of usable) {
-    const destination = trip.headsign.trim()
-      || canonicalByStop.get(stops.at(-1)!.stopId)?.name
-      || "Destination unavailable";
+  const destinationByTrip = new Map(usable.map(({ trip, stops }) => [
+    trip.id,
+    trip.headsign.trim() || canonicalByStop.get(stops.at(-1)!.stopId)?.name || "Destination unavailable",
+  ]));
+  for (const destination of destinationByTrip.values()) {
     destinationCounts.set(destination, (destinationCounts.get(destination) ?? 0) + 1);
+  }
+
+  const { patterns, patternIdByKey } = buildPatterns(
+    usable.map(({ trip }) => ({
+      key: trip.id,
+      stationKeys: sequenceByTrip.get(trip.id)!,
+      destination: destinationByTrip.get(trip.id)!,
+    })),
+    stationByKey,
+  );
+
+  const services: TimetableService[] = [];
+  for (const { trip, stops } of usable) {
     const service: TimetableService = {
       id: trip.id,
       origin: canonicalByStop.get(stops[0].stopId)?.name ?? "Origin unavailable",
-      destination,
+      destination: destinationByTrip.get(trip.id)!,
       dateMask: trip.activeDates.reduce((mask, date) => mask | (1 << dateIndex.get(date)!), 0),
+      patternId: patternIdByKey.get(trip.id)!,
       times: Array<number | null>(stationKeys.length).fill(null),
     };
     for (const [key, minutes] of selectCanonicalStopTimes(stops, canonicalByStop)) {
@@ -431,6 +509,7 @@ function buildDirection(
     label,
     stationIds: stationKeys.map((key) => stationByKey.get(key)?.id ?? lineIdFromName(key)),
     stationNames: stationKeys.map((key) => stationByKey.get(key)?.name ?? key),
+    patterns,
     services,
   };
 }
@@ -451,6 +530,15 @@ export function validateTimetable(data: NetworkTimetableData): void {
         throw new Error(`${line.name} direction ${direction.id} has duplicate canonical station ids`);
       }
       if (!Array.isArray(direction.services)) throw new Error(`${line.name} has invalid services`);
+      if (!Array.isArray(direction.patterns) || direction.patterns.length === 0) {
+        throw new Error(`${line.name} direction ${direction.id} has no stopping patterns`);
+      }
+      const patternIds = new Set(direction.patterns.map((pattern) => pattern.id));
+      for (const service of direction.services) {
+        if (!patternIds.has(service.patternId)) {
+          throw new Error(`${line.name} service ${service.id} references unknown pattern ${service.patternId}`);
+        }
+      }
       for (const service of direction.services) {
         if (!Number.isInteger(service.dateMask) || service.dateMask <= 0 || service.dateMask > 255) {
           throw new Error(`${line.name} service ${service.id} has an invalid date mask`);

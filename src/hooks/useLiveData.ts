@@ -1,53 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { LineDisruption, LiveRun, NetworkStaticData } from "../shared/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { LineDisruption, LiveRun, LiveSnapshot, NetworkTimetableData } from "../shared/types";
 import { LIVE_POLL_INTERVAL_MS } from "../config";
-import { loadLiveOrDemoSnapshot, pollLiveData } from "../data/loadData";
+import { loadLiveSnapshot, pollLiveData } from "../data/loadData";
+import { buildScheduledSnapshot } from "../data/scheduledSnapshot";
 
 export interface LiveDataState {
   runs: LiveRun[];
-  isDemo: boolean;
+  /** True when every run carries timetable times only, with no real-time layer. */
+  isScheduleOnly: boolean;
   generatedAtUtc: string | null;
+  /** When the upstream realtime feed last published, which is what "how fresh" really means. */
+  feedTimestampUtc: string | null;
   disruptionsByLine: Record<string, LineDisruption[]>;
   /** Fetches a fresh snapshot immediately, for pull-to-refresh. */
   refresh: () => Promise<void>;
 }
 
-const INITIAL_SNAPSHOT = {
-  runs: [] as LiveRun[],
-  isDemo: false,
-  generatedAtUtc: null as string | null,
-  disruptionsByLine: {} as Record<string, LineDisruption[]>,
-};
+/**
+ * Polls the live snapshot, degrading to the shipped GTFS timetable when there
+ * isn't one.
+ *
+ * The fallback is only computed when it is actually needed, and the disruption
+ * list is kept from the last good snapshot: an alert that was true a minute ago
+ * is almost certainly still true, and dropping it during a blip is exactly when
+ * a rider most needs it.
+ */
+export function useLiveData(timetable: NetworkTimetableData | null): LiveDataState {
+  const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null);
 
-/** Polls the live departures/disruptions snapshot on the interval configured in `config.ts`. */
-export function useLiveData(staticData: NetworkStaticData | null): LiveDataState {
-  const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
-  const staticDataRef = useRef(staticData);
-  staticDataRef.current = staticData;
-
-  useEffect(() => {
-    if (!staticData) return;
-    return pollLiveData(staticData, LIVE_POLL_INTERVAL_MS, (next, isDemo) => {
-      setSnapshot({
-        runs: next.runs,
-        isDemo,
-        generatedAtUtc: next.generatedAtUtc,
-        disruptionsByLine: next.disruptionsByLine ?? {},
-      });
-    });
-  }, [staticData]);
+  useEffect(() => pollLiveData(LIVE_POLL_INTERVAL_MS, setSnapshot), []);
 
   const refresh = useCallback(async () => {
-    const currentStaticData = staticDataRef.current;
-    if (!currentStaticData) return;
-    const { snapshot: next, isDemo } = await loadLiveOrDemoSnapshot(currentStaticData);
-    setSnapshot({
-      runs: next.runs,
-      isDemo,
-      generatedAtUtc: next.generatedAtUtc,
-      disruptionsByLine: next.disruptionsByLine ?? {},
-    });
+    const next = await loadLiveSnapshot();
+    if (next) setSnapshot(next);
   }, []);
 
-  return { ...snapshot, refresh };
+  const fallback = useMemo(
+    () => (snapshot === null && timetable !== null ? buildScheduledSnapshot(timetable) : null),
+    [snapshot, timetable],
+  );
+  const effective = snapshot ?? fallback;
+
+  return useMemo(
+    () => ({
+      runs: effective?.runs ?? [],
+      isScheduleOnly: effective?.isScheduleOnly === true,
+      generatedAtUtc: effective?.generatedAtUtc ?? null,
+      feedTimestampUtc: effective?.feedTimestampUtc ?? null,
+      disruptionsByLine: effective?.disruptionsByLine ?? {},
+      refresh,
+    }),
+    [effective, refresh],
+  );
 }

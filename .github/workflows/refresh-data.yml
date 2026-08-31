@@ -1,11 +1,13 @@
 name: Refresh live Metro Trains Melbourne data
 
-# Fetches predicted departures for all 16 in-scope Metro lines and commits
-# public/data/network-live.json for the static GitHub Pages deployment.
+# Rebuilds public/data/network-live.json for the static GitHub Pages
+# deployment: the shipped GTFS timetable as the spine, with GTFS-Realtime trip
+# updates and vehicle positions layered over it.
 #
-# Three sub-fetches approximately 80 seconds apart improve freshness within
-# GitHub Actions' five-minute minimum reliable scheduling interval. Bounded
-# concurrency controls approximately 300 line/station requests per fetch.
+# This used to run three sub-fetches ~80 seconds apart, because a single fetch
+# polled PTV once per (line, station) pair and took minutes to complete. Three
+# requests now cover the whole network in seconds, so a single fetch per run is
+# both fresher and simpler.
 #
 # GITHUB_TOKEN-authored pushes do not trigger downstream push workflows.
 # Explicit dispatch is therefore required to start deploy.yml after a change.
@@ -23,10 +25,6 @@ concurrency:
   group: refresh-data
   cancel-in-progress: false
 
-env:
-  SUBFETCH_COUNT: 3
-  SUBFETCH_INTERVAL_SECONDS: 80
-
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -43,48 +41,36 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fetch live data a few times and commit each snapshot
+      - name: Fetch live data and commit the snapshot
         id: fetch
         env:
+          VIC_GTFS_R_KEY: ${{ secrets.VIC_GTFS_R_KEY }}
           PTV_DEV_ID: ${{ secrets.PTV_DEV_ID }}
           PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
         run: |
           set -euo pipefail
 
-          if [ -z "${PTV_DEV_ID:-}" ] || [ -z "${PTV_API_KEY:-}" ]; then
-            echo "::warning::PTV_DEV_ID / PTV_API_KEY secrets are not set yet — skipping live data fetch. The site will keep showing demo/sample data until these are configured (see README)."
-            exit 0
+          if [ -z "${VIC_GTFS_R_KEY:-}" ]; then
+            echo "::warning::VIC_GTFS_R_KEY is not set — the snapshot will carry timetable times with no real-time layer. Register at https://opendata.transport.vic.gov.au and add the secret."
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          changed=false
+          npx tsx scripts/fetch-live-data.ts
 
-          for i in $(seq 1 "${SUBFETCH_COUNT}"); do
-            echo "--- Fetch attempt ${i}/${SUBFETCH_COUNT} ---"
-            if npx tsx scripts/fetch-live-data.ts; then
-              if ! git diff --quiet -- public/data/network-live.json; then
-                git add public/data/network-live.json
-                git commit -m "chore(data): refresh live Metro Trains Melbourne departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-                bash scripts/push-generated-data.sh
-                changed=true
-              else
-                echo "No change in live data snapshot; skipping commit."
-              fi
-            else
-              echo "::warning::Live data fetch attempt ${i} failed; will retry on next attempt/run."
-            fi
+          if git diff --quiet -- public/data/network-live.json; then
+            echo "No change in live data snapshot; skipping commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-            if [ "${i}" -lt "${SUBFETCH_COUNT}" ]; then
-              sleep "${SUBFETCH_INTERVAL_SECONDS}"
-            fi
-          done
-
-          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+          git add public/data/network-live.json
+          git commit -m "chore(data): refresh live Metro Trains Melbourne departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          bash scripts/push-generated-data.sh
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Trigger a Pages deploy for the new data
-        # One deployment publishes the final main state after all sub-fetches.
         if: steps.fetch.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

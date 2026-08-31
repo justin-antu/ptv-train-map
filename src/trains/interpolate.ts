@@ -1,6 +1,13 @@
-import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
+import { effectiveStopTimeUtc, type LiveRun, type NetworkStaticData, type StationStatic } from "../shared/types";
 import { delayMinutesFor } from "../data/departures";
 import { cumulativeDistances, nearestDistanceAlong, pointAtDistance } from "./polylineGeo";
+
+/**
+ * How old a GPS fix may be before the marker falls back to interpolation. The
+ * vehicle-positions feed refreshes about every 30 seconds, so a fix older than
+ * this means the train has stopped reporting rather than stopped moving.
+ */
+export const GPS_FIX_MAX_AGE_MS = 3 * 60_000;
 
 export interface TrainPosition {
   runRef: string;
@@ -8,14 +15,23 @@ export interface TrainPosition {
   destinationName: string;
   lon: number;
   lat: number;
+  /**
+   * `gps` when the coordinates are a real vehicle fix from the realtime feed,
+   * `interpolated` when they are a guess between two timetabled calls. The map
+   * distinguishes the two, because an interpolated marker can be confidently
+   * wrong in a way a rider should be able to see.
+   */
+  source: "gps" | "interpolated";
+  /** Degrees clockwise from true north. Only ever present on a GPS fix. */
+  bearing?: number;
   /** 0 = at fromStation, 1 = at toStation (or exactly at a station if from === to). */
   progress: number;
   fromStationId: string;
   toStationId: string;
   /**
-   * Minutes late at the run's next (or current, if waiting/arrived) predicted
-   * stop, derived from that stop's `timeUtc - scheduledTimeUtc`. 0 or negative
-   * means on time/early. Rounded to the nearest minute.
+   * Minutes late at the run's next (or current, if waiting/arrived) call.
+   * 0 or negative means on time/early. Rounded to the nearest minute, and 0
+   * when the feed published no prediction to measure against.
    */
   delayMin: number;
 }
@@ -72,7 +88,7 @@ const parsedTimesCache = new WeakMap<LiveRun, ParsedRunTimes>();
 function getParsedTimes(run: LiveRun): ParsedRunTimes {
   let parsed = parsedTimesCache.get(run);
   if (!parsed) {
-    const stopMs = run.stops.map((s) => Date.parse(s.timeUtc));
+    const stopMs = run.stops.map((s) => Date.parse(effectiveStopTimeUtc(s)));
     parsed = { firstMs: stopMs[0], lastMs: stopMs[stopMs.length - 1], stopMs };
     parsedTimesCache.set(run, parsed);
   }
@@ -87,7 +103,7 @@ function getParsedTimes(run: LiveRun): ParsedRunTimes {
 export function countActiveRuns(runs: LiveRun[], now: number, options: InterpolationOptions): number {
   let count = 0;
   for (const run of runs) {
-    if (run.stops.length === 0) continue;
+    if (run.stops.length === 0 || run.status === "cancelled") continue;
     const { firstMs, lastMs } = getParsedTimes(run);
     if (now < firstMs) {
       if (firstMs - now <= options.showBeforeFirstStopMs) count++;
@@ -118,9 +134,22 @@ export function computeTrainPositions(
 ): TrainPosition[] {
   const positions: TrainPosition[] = [];
 
+  /**
+   * A real fix always beats a guess, but the interpolated bracket is still
+   * computed: it supplies the from/to stations the popup names, which a bare
+   * coordinate cannot.
+   */
+  const withBestPosition = (run: LiveRun, interpolated: TrainPosition): TrainPosition => {
+    const fix = run.position;
+    if (!fix) return interpolated;
+    const observedAt = Date.parse(fix.observedAtUtc);
+    if (!Number.isFinite(observedAt) || now - observedAt > GPS_FIX_MAX_AGE_MS) return interpolated;
+    return { ...interpolated, lon: fix.lon, lat: fix.lat, bearing: fix.bearing, source: "gps" };
+  };
+
   for (const run of runs) {
     const stops = run.stops;
-    if (stops.length === 0) continue;
+    if (stops.length === 0 || run.status === "cancelled") continue;
 
     const lineContext = context.get(run.lineId);
     if (!lineContext) continue;
@@ -131,17 +160,20 @@ export function computeTrainPositions(
       if (firstTime - now <= options.showBeforeFirstStopMs) {
         const station = stationsById.get(stops[0].stationId);
         if (station) {
-          positions.push({
-            runRef: run.runRef,
-            lineId: run.lineId,
-            destinationName: run.destinationName,
-            lon: station.lon,
-            lat: station.lat,
-            progress: 0,
-            fromStationId: station.id,
-            toStationId: station.id,
-            delayMin: delayMinutesFor(stops[0]),
-          });
+          positions.push(
+            withBestPosition(run, {
+              runRef: run.runRef,
+              lineId: run.lineId,
+              destinationName: run.destinationName,
+              lon: station.lon,
+              lat: station.lat,
+              source: "interpolated",
+              progress: 0,
+              fromStationId: station.id,
+              toStationId: station.id,
+              delayMin: delayMinutesFor(stops[0]) ?? 0,
+            }),
+          );
         }
       }
       continue;
@@ -152,17 +184,20 @@ export function computeTrainPositions(
         const lastStop = stops[stops.length - 1];
         const station = stationsById.get(lastStop.stationId);
         if (station) {
-          positions.push({
-            runRef: run.runRef,
-            lineId: run.lineId,
-            destinationName: run.destinationName,
-            lon: station.lon,
-            lat: station.lat,
-            progress: 1,
-            fromStationId: station.id,
-            toStationId: station.id,
-            delayMin: delayMinutesFor(lastStop),
-          });
+          positions.push(
+            withBestPosition(run, {
+              runRef: run.runRef,
+              lineId: run.lineId,
+              destinationName: run.destinationName,
+              lon: station.lon,
+              lat: station.lat,
+              source: "interpolated",
+              progress: 1,
+              fromStationId: station.id,
+              toStationId: station.id,
+              delayMin: delayMinutesFor(lastStop) ?? 0,
+            }),
+          );
         }
       }
       continue;
@@ -197,17 +232,20 @@ export function computeTrainPositions(
           [lon, lat] = pointAtDistance(lineContext.polyline, lineContext.cumDist, targetDist);
         }
 
-        positions.push({
-          runRef: run.runRef,
-          lineId: run.lineId,
-          destinationName: run.destinationName,
-          lon,
-          lat,
-          progress,
-          fromStationId: stationA.id,
-          toStationId: stationB.id,
-          delayMin: delayMinutesFor(b),
-        });
+        positions.push(
+          withBestPosition(run, {
+            runRef: run.runRef,
+            lineId: run.lineId,
+            destinationName: run.destinationName,
+            lon,
+            lat,
+            source: "interpolated",
+            progress,
+            fromStationId: stationA.id,
+            toStationId: stationB.id,
+            delayMin: delayMinutesFor(b) ?? 0,
+          }),
+        );
         break;
       }
     }

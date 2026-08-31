@@ -3,58 +3,186 @@ import type { LineDisruption } from "../shared/types";
 /** How urgently a disruption affects travel, mapped to the theme's severity tokens. */
 export type DisruptionSeverity = "critical" | "warning" | "info";
 
+/** Whether a disruption is biting now or is still ahead of the traveller. */
+export type DisruptionTiming = "now" | "upcoming";
+
 export const DISRUPTION_SEVERITY_ORDER: readonly DisruptionSeverity[] = ["critical", "warning", "info"];
 
 export const DISRUPTION_SEVERITY_LABELS: Record<DisruptionSeverity, string> = {
-  critical: "Critical",
-  warning: "Delays",
+  critical: "Major disruption",
+  warning: "Minor delay",
   info: "Information",
 };
 
-/** One disruption together with every line it affects. */
-export interface AggregatedDisruption {
-  disruption: LineDisruption;
-  /** Affected line ids, in network order. */
-  lineIds: string[];
-  severity: DisruptionSeverity;
+/**
+ * Hue bands of PTV's own disruption colours.
+ *
+ * The feed ships `colour` as a hex string rather than a severity enum, but the
+ * palette is stable: `#ff5100` (19°) for the things that stop trains running,
+ * `#ffbb00` (44°) for detours and short delays, `#ffd500` (50°) for planned
+ * works and notices. Comparing hue rather than exact strings means a new shade
+ * lands in the right band instead of falling through to "Information".
+ */
+const MAJOR_HUE_MAX = 35;
+const MINOR_HUE_MAX = 47;
+
+/** Hue in degrees for a "#rrggbb" string, or null if it is not one. */
+function colourHue(colour: string | undefined): number | null {
+  if (!colour) return null;
+  const match = /^#?([0-9a-f]{6})$/i.exec(colour.trim());
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 16);
+  const r = ((value >> 16) & 0xff) / 255;
+  const g = ((value >> 8) & 0xff) / 255;
+  const b = (value & 0xff) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const span = max - min;
+  if (span === 0) return null;
+  let hue: number;
+  if (max === r) hue = ((g - b) / span) % 6;
+  else if (max === g) hue = (b - r) / span + 2;
+  else hue = (r - g) / span + 4;
+  hue *= 60;
+  return hue < 0 ? hue + 360 : hue;
 }
 
 /**
- * Classifies a PTV alert by how much it disrupts a journey.
+ * Classifies a PTV alert by how much it disrupts a journey, using PTV's own
+ * signals rather than the wording of the title.
  *
- * PTV supplies a free-text `disruptionType` and title rather than a severity
- * field, so this reads both for the phrases the feed actually uses.
+ * The previous keyword regex read the title for phrases like "delay" or
+ * "suspend", which mislabelled the feed's actual content — "Station detour"
+ * matched nothing and was filed under Information despite being on the
+ * platform displays. `display_on_board` is PTV's editorial judgement that
+ * something is worth telling waiting passengers, and `colour` is the severity
+ * band their own channels render.
  */
 export function disruptionSeverity(disruption: LineDisruption): DisruptionSeverity {
-  const text = `${disruption.disruptionType} ${disruption.title}`.toLowerCase();
-  if (/suspend|cancel|not running|no trains|buses replace|part closure/.test(text)) return "critical";
-  if (/delay|disrupt|slow|congestion/.test(text)) return "warning";
+  const hue = colourHue(disruption.colour);
+  if (hue !== null && hue <= MAJOR_HUE_MAX) return "critical";
+  // On the platform displays means it is affecting travel now, whatever band
+  // the colour puts it in.
+  if (disruption.displayOnBoard) return "warning";
+  if (hue !== null && hue <= MINOR_HUE_MAX) return "warning";
   return "info";
 }
 
+/** Is this disruption in force, or does it start later? */
+export function disruptionTiming(fromDateUtc: string | null, now: number): DisruptionTiming {
+  if (!fromDateUtc) return "now";
+  const from = Date.parse(fromDateUtc);
+  return Number.isNaN(from) || from <= now ? "now" : "upcoming";
+}
+
 /**
- * Flattens the per-line disruption map into a deduplicated feed.
+ * Strips the line prefix PTV puts on nearly every title.
  *
- * PTV repeats the same disruption under every line it touches, so a
- * network-wide list has to group by `disruption.id` or a single works notice
- * appears three or four times.
+ * Titles read "Cranbourne Line: Buses replace trains…" or "Sunbury Line
+ * stations: Car park closures…". The card already names the affected lines as
+ * chips above the text, so repeating them in the headline both wastes the
+ * width and hides the part that differs.
+ */
+export function headlineOf(title: string): string {
+  const stripped = title.replace(/^.{0,60}?\bline[s]?\b[^:]{0,30}:\s*/i, "");
+  if (!stripped || stripped.length < 8) return title;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+/** One incident, with every line and PTV notice folded into it. */
+export interface AggregatedDisruption {
+  /** Stable identity for the merged incident. */
+  key: string;
+  /** The first notice seen for this incident, for type, description and link. */
+  disruption: LineDisruption;
+  /** Every PTV disruption_id merged here — usually one per affected line. */
+  ids: number[];
+  /** Affected line ids, in network order. */
+  lineIds: string[];
+  /** Specifically named stations across every merged notice. */
+  stationIds: string[];
+  severity: DisruptionSeverity;
+  /** The title with its redundant line prefix removed. */
+  headline: string;
+  /** Earliest start across the merged notices. */
+  fromDateUtc: string | null;
+  /** Latest end, or null when any merged notice is open-ended. */
+  toDateUtc: string | null;
+}
+
+/**
+ * Identity of an *incident* rather than of a PTV record.
+ *
+ * PTV publishes one disruption id per line even when it is manifestly one
+ * event: the September industrial action arrives as sixteen near-identical
+ * notices, and a network-wide car-park programme as one per line. Keying on
+ * the de-prefixed title plus type plus severity collapses those into a single
+ * card listing every line. Dates are deliberately not part of the key — the
+ * same programme is often logged with a different start date per line — so the
+ * merged window is widened to cover all of them instead.
+ */
+function incidentKey(disruption: LineDisruption, severity: DisruptionSeverity): string {
+  const headline = headlineOf(disruption.title).toLowerCase().replace(/\s+/g, " ").trim();
+  return `${severity}|${disruption.disruptionType.toLowerCase()}|${headline}`;
+}
+
+/** Earlier of two ISO timestamps, treating null as "unknown" rather than "unbounded". */
+function earliest(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return Date.parse(a) <= Date.parse(b) ? a : b;
+}
+
+/** Later of two end timestamps, where null means open-ended and therefore wins. */
+function latestEnd(a: string | null, b: string | null): string | null {
+  if (a === null || b === null) return null;
+  return Date.parse(a) >= Date.parse(b) ? a : b;
+}
+
+/**
+ * Flattens the per-line disruption map into a deduplicated incident feed,
+ * most disruptive first.
  */
 export function aggregateDisruptions(
   disruptionsByLine: Record<string, LineDisruption[]>,
   lineOrder: readonly string[],
 ): AggregatedDisruption[] {
-  const byId = new Map<number, AggregatedDisruption>();
+  const byIncident = new Map<string, AggregatedDisruption>();
+
   for (const lineId of lineOrder) {
     for (const disruption of disruptionsByLine[lineId] ?? []) {
-      const existing = byId.get(disruption.id);
-      if (existing) {
-        if (!existing.lineIds.includes(lineId)) existing.lineIds.push(lineId);
-      } else {
-        byId.set(disruption.id, { disruption, lineIds: [lineId], severity: disruptionSeverity(disruption) });
+      const severity = disruptionSeverity(disruption);
+      const key = incidentKey(disruption, severity);
+      const existing = byIncident.get(key);
+
+      if (!existing) {
+        byIncident.set(key, {
+          key,
+          disruption,
+          ids: [disruption.id],
+          lineIds: [lineId],
+          stationIds: [...(disruption.stationIds ?? [])],
+          severity,
+          headline: headlineOf(disruption.title),
+          fromDateUtc: disruption.fromDateUtc,
+          toDateUtc: disruption.toDateUtc,
+        });
+        continue;
+      }
+
+      if (!existing.lineIds.includes(lineId)) existing.lineIds.push(lineId);
+      if (!existing.ids.includes(disruption.id)) {
+        existing.ids.push(disruption.id);
+        existing.fromDateUtc = earliest(existing.fromDateUtc, disruption.fromDateUtc);
+        existing.toDateUtc = latestEnd(existing.toDateUtc, disruption.toDateUtc);
+      }
+      for (const stationId of disruption.stationIds ?? []) {
+        if (!existing.stationIds.includes(stationId)) existing.stationIds.push(stationId);
       }
     }
   }
-  return [...byId.values()].sort(
+
+  return [...byIncident.values()].sort(
     (a, b) => DISRUPTION_SEVERITY_ORDER.indexOf(a.severity) - DISRUPTION_SEVERITY_ORDER.indexOf(b.severity),
   );
 }
@@ -66,53 +194,55 @@ export interface LineDisruptionSummary {
   worstSeverity: DisruptionSeverity | null;
   /** Subset of `lineIds` carrying a critical alert, so they can be named first. */
   criticalLineIds: string[];
-  /** Distinct critical disruptions, for the major-disruption indicator. */
+  /** Distinct critical incidents, for the major-disruption indicator. */
   criticalCount: number;
-  /** Distinct warning and information disruptions. */
+  /** Distinct warning and information incidents. */
   otherCount: number;
-  /** Distinct disruptions across those lines. */
+  /** Distinct incidents across those lines. */
   total: number;
 }
 
 /**
  * Rolls up the disruptions on a specific set of lines, so the commute banner can
  * lead with the worst thing happening rather than just a count.
+ *
+ * Counts incidents, not PTV records, so the banner and the alerts feed never
+ * disagree about how many things are wrong.
  */
 export function summariseLineDisruptions(
   disruptionsByLine: Record<string, LineDisruption[]>,
   lineIds: readonly string[],
 ): LineDisruptionSummary {
+  const incidents = aggregateDisruptions(disruptionsByLine, lineIds);
+
   const affected: string[] = [];
   const criticalLineIds: string[] = [];
-  const critical = new Set<number>();
-  const other = new Set<number>();
+  let criticalCount = 0;
+  let otherCount = 0;
   let worstIndex = Number.POSITIVE_INFINITY;
 
-  for (const lineId of lineIds) {
-    const disruptions = disruptionsByLine[lineId] ?? [];
-    if (disruptions.length === 0) continue;
-    affected.push(lineId);
+  for (const incident of incidents) {
+    if (incident.severity === "critical") criticalCount += 1;
+    else otherCount += 1;
 
-    for (const disruption of disruptions) {
-      const severity = disruptionSeverity(disruption);
-      if (severity === "critical") {
-        critical.add(disruption.id);
-        if (!criticalLineIds.includes(lineId)) criticalLineIds.push(lineId);
-      } else {
-        other.add(disruption.id);
-      }
-      const index = DISRUPTION_SEVERITY_ORDER.indexOf(severity);
-      if (index < worstIndex) worstIndex = index;
+    for (const lineId of incident.lineIds) {
+      if (!affected.includes(lineId)) affected.push(lineId);
+      if (incident.severity === "critical" && !criticalLineIds.includes(lineId)) criticalLineIds.push(lineId);
     }
+
+    worstIndex = Math.min(worstIndex, DISRUPTION_SEVERITY_ORDER.indexOf(incident.severity));
   }
 
+  // Restore network order, which the incident walk does not preserve.
+  const inOrder = (ids: string[]) => lineIds.filter((lineId) => ids.includes(lineId));
+
   return {
-    lineIds: affected,
+    lineIds: inOrder(affected),
     worstSeverity: Number.isFinite(worstIndex) ? DISRUPTION_SEVERITY_ORDER[worstIndex] : null,
-    criticalLineIds,
-    criticalCount: critical.size,
-    otherCount: other.size,
-    total: critical.size + other.size,
+    criticalLineIds: inOrder(criticalLineIds),
+    criticalCount,
+    otherCount,
+    total: criticalCount + otherCount,
   };
 }
 
@@ -128,4 +258,27 @@ export function formatAffectedDates(fromDateUtc: string | null, toDateUtc: strin
   if (from) return `Affected from ${from}`;
   if (to) return `Affected until ${to}`;
   return "Dates unavailable";
+}
+
+/**
+ * The one-line scope under an incident's headline: which lines, how many named
+ * stations, and the window. Also used as the row's accessible description, so a
+ * screen reader gets the same qualification a sighted reader does.
+ */
+export function describeScope(
+  incident: AggregatedDisruption,
+  lineNameById: Map<string, string>,
+): string {
+  const lineNames = incident.lineIds.map((lineId) => lineNameById.get(lineId) ?? lineId);
+  const lines = lineNames.length === 0
+    ? "Network-wide"
+    : lineNames.length <= 3
+      ? `${lineNames.join(", ")} ${lineNames.length === 1 ? "line" : "lines"}`
+      : `${lineNames.length} lines`;
+  const stations = incident.stationIds.length > 0
+    ? `${incident.stationIds.length} station${incident.stationIds.length === 1 ? "" : "s"}`
+    : null;
+  return [lines, stations, formatAffectedDates(incident.fromDateUtc, incident.toDateUtc)]
+    .filter(Boolean)
+    .join(" · ");
 }

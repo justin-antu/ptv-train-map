@@ -138,7 +138,7 @@ export function SearchableSelect({
         className={cn("w-full min-w-0 justify-between font-normal", compact ? "h-8 gap-1 px-2 text-xs" : "h-10 px-3")}
       >
         <span className="flex min-w-0 items-center gap-1.5">
-          {selected?.color && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: selected.color }} />}
+          {selected?.color && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: selected.color }} aria-hidden="true" />}
           <span className={cn("truncate", !selected && "text-muted-foreground")}>{selected?.label ?? placeholder}</span>
         </span>
         <ChevronsUpDown className={cn("shrink-0 opacity-50", compact && "size-3")} aria-hidden="true" />
@@ -192,7 +192,7 @@ export function SearchableSelect({
                   onClick={() => commit(item.id)}
                   aria-pressed={item.id === value}
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                    "rounded-full border px-2 py-0.5 text-3xs font-medium transition-colors",
                     item.id === value
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -245,13 +245,13 @@ export function SearchableSelect({
                   )}
                 >
                   <Check className={cn("size-3.5 shrink-0", item.id === value ? "opacity-100" : "opacity-0")} aria-hidden="true" />
-                  {item.color && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: item.color }} />}
+                  {item.color && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: item.color }} aria-hidden="true" />}
                   <span className="truncate">{item.label}</span>
                 </button>
               ))
             )}
             {matches.total > matches.visible.length && (
-              <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
+              <p className="px-3 py-2 text-center text-2xs text-muted-foreground">
                 {matches.total - matches.visible.length} more — keep typing to narrow it down.
               </p>
             )}

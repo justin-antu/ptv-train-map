@@ -129,17 +129,37 @@ interface PtvDeparturesResponse {
 
 export interface PtvDisruptionRoute {
   route_id: number;
+  route_name?: string;
+}
+
+export interface PtvDisruptionStop {
+  stop_id: number;
+  stop_name: string;
 }
 
 export interface PtvDisruption {
   disruption_id: number;
   title: string;
+  /** PTV's longer prose body. Often carries the only actionable detail. */
+  description?: string;
   url: string | null;
   disruption_status: string;
   disruption_type: string;
+  /**
+   * PTV's own severity signal — whether the disruption is significant enough to
+   * appear on station passenger information displays. Far more trustworthy than
+   * pattern-matching the title, which misfiles routine notices as urgent and
+   * vice versa.
+   */
+  display_on_board?: boolean;
+  display_status?: boolean;
+  /** PTV's severity colour as "#RRGGBB". */
+  colour?: string;
   from_date: string | null;
   to_date: string | null;
   routes: PtvDisruptionRoute[];
+  /** Specifically affected stations, when PTV names any. */
+  stops?: PtvDisruptionStop[];
 }
 
 /**
@@ -173,20 +193,30 @@ export async function getStopsForRoute(
 }
 
 /**
- * GET /v3/disruptions/route/{routeId}?disruption_status=current — current (not
- * "planned") disruptions affecting a route. Verified against a real response on
- * 2026-08-17 (route_id 9, Lilydale): returns
- * `{ disruptions: { metro_train: [...], general: [...], ... }, status }`, each
- * disruption carrying `disruption_id`, `title`, `url`, `disruption_type`,
- * `from_date`/`to_date`, and a `routes[]` array of every route it applies to.
- * Flatten all mode arrays because a network-wide disruption may be filed under
- * `general` while still listing the requested route ID.
+ * GET /v3/disruptions?route_types=0&disruption_status=current — every current
+ * metropolitan train disruption in one call.
+ *
+ * This replaces sixteen per-route calls. Each disruption already carries a
+ * `routes[]` array naming every route it applies to, so the per-route endpoint
+ * was returning the same network-wide records sixteen times over and forcing
+ * the caller to deduplicate them anyway.
+ *
+ * The response shape is `{ disruptions: { metro_train: [...], general: [...] } }`.
+ * All mode arrays are flattened because a disruption affecting metro trains may
+ * still be filed under `general`.
  */
-export async function getDisruptionsForRoute(routeId: number, credentials: PtvCredentials): Promise<PtvDisruption[]> {
-  const res = await ptvGet<PtvDisruptionsResponse>(`/v3/disruptions/route/${routeId}?disruption_status=current`, credentials);
-  return Object.values(res.disruptions ?? {})
+export async function getCurrentTrainDisruptions(credentials: PtvCredentials): Promise<PtvDisruption[]> {
+  const res = await ptvGet<PtvDisruptionsResponse>(
+    `/v3/disruptions?route_types=${ROUTE_TYPE_TRAIN}&disruption_status=current`,
+    credentials,
+  );
+  const all = Object.values(res.disruptions ?? {})
     .filter((arr): arr is PtvDisruption[] => Array.isArray(arr))
     .flat();
+
+  const byId = new Map<number, PtvDisruption>();
+  for (const disruption of all) byId.set(disruption.disruption_id, disruption);
+  return [...byId.values()];
 }
 
 /**

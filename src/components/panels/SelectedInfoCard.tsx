@@ -3,7 +3,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { EtaText } from "../EtaText";
 import { DelayBadge } from "../DelayBadge";
-import type { LiveRun, StationStatic } from "../../shared/types";
+import { effectiveStopTimeUtc, type LiveRun, type StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
 import type { DeparturePreferencesController } from "../../hooks/useDeparturePreferences";
 import { delayMinutesFor, soonestPerLine, upcomingStopsForStation } from "../../data/departures";
@@ -61,29 +61,30 @@ export function SelectedInfoCard({
                   size="icon-sm"
                   variant="ghost"
                   onClick={() => preferences.setOrigin(isOrigin ? null : station.id)}
-                  className={cn("text-muted-foreground", isOrigin && "text-warning")}
+                  className={cn("touch-target text-muted-foreground", isOrigin && "text-warning")}
                 >
                   <Star className={cn("size-4", isOrigin && "fill-warning text-warning")} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{isOrigin ? "Clear my departure station" : "Depart from this station"}</TooltipContent>
             </Tooltip>
-            <Button size="icon-sm" variant="ghost" onClick={onClose} className="text-muted-foreground">
+            <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target text-muted-foreground">
               <X className="size-4" />
             </Button>
           </div>
         </div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">Next departures</div>
+        <div className="mt-0.5 text-2xs text-muted-foreground">Next departures</div>
         <div className="mt-2 space-y-1.5">
           {departures.length === 0 ? (
             <div className="text-xs italic text-muted-foreground">No upcoming departures in current data.</div>
           ) : (
             departures.map((d) => (
               <div key={d.lineId} className="flex items-center gap-2 text-xs">
-                <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: lineColorById.get(d.lineId) ?? "#999" }} />
+                <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: lineColorById.get(d.lineId) ?? "#999" }} aria-hidden="true" />
                 <span className="flex-1 truncate">{lineNameById.get(d.lineId) ?? d.lineId}</span>
                 <EtaText timeUtc={d.timeUtc} now={now} className="font-semibold" />
-                <DelayBadge delayMin={d.delayMin} />
+                {/* No prediction means no delay to report, rather than "0 min late". */}
+                {d.delayMin !== null && <DelayBadge delayMin={d.delayMin} />}
               </div>
             ))
           )}
@@ -101,7 +102,7 @@ export function SelectedInfoCard({
     );
   }
 
-  const nextStop = run.stops.find((s) => Date.parse(s.timeUtc) > now) ?? null;
+  const nextStop = run.stops.find((s) => Date.parse(effectiveStopTimeUtc(s)) > now) ?? null;
   const lastStop = run.stops[run.stops.length - 1];
   const delayMin = delayMinutesFor(nextStop ?? lastStop);
   const color = lineColorById.get(run.lineId) ?? "#999999";
@@ -112,20 +113,20 @@ export function SelectedInfoCard({
     <div className="relative overflow-hidden rounded-xl border border-l-4 border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm" style={{ borderLeftColor: color }}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="size-3 shrink-0 rounded-full ring-2 ring-white" style={{ background: color }} />
+          <span className="size-3 shrink-0 rounded-full ring-2 ring-white" style={{ background: color }} aria-hidden="true" />
           <span className="type-heading truncate text-base">{lineName}</span>
-          <DelayBadge delayMin={delayMin} />
+          {delayMin !== null && <DelayBadge delayMin={delayMin} />}
         </div>
-        <Button size="icon-sm" variant="ghost" onClick={onClose} className="shrink-0 text-muted-foreground">
+        <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target shrink-0 text-muted-foreground">
           <X className="size-4" />
         </Button>
       </div>
-      <div className="mt-0.5 text-[11px] text-muted-foreground">To {run.destinationName}</div>
+      <div className="mt-0.5 text-2xs text-muted-foreground">To {run.destinationName}</div>
       <div className="mt-2 text-xs">
         {nextStop && nextStationName ? (
           <div className="flex items-center gap-2">
             <span className="flex-1">Next: {nextStationName}</span>
-            <EtaText timeUtc={nextStop.timeUtc} now={now} className="font-semibold" />
+            <EtaText timeUtc={effectiveStopTimeUtc(nextStop)} now={now} className="font-semibold" />
           </div>
         ) : (
           <div className="text-muted-foreground italic">Approaching {run.destinationName}</div>

@@ -68,12 +68,12 @@ export function SectionCard({
                 {title}
               </span>
               {badge && (
-                <span className="type-label rounded-full border border-brand/40 bg-brand/10 px-1.5 text-[9px] leading-4 text-brand">
+                <span className="type-label rounded-full border border-brand/40 bg-brand/10 px-1.5 text-3xs leading-4 text-brand">
                   {badge}
                 </span>
               )}
             </span>
-            {description && <span className="mt-0.5 block text-[11px] text-muted-foreground sm:text-xs">{description}</span>}
+            {description && <span className="mt-0.5 block text-2xs text-muted-foreground sm:text-xs">{description}</span>}
           </span>
         </button>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}

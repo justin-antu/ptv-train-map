@@ -4,13 +4,16 @@ A static, mobile-first React application for Metro Trains Melbourne commuters. I
 
 ## Features
 
-- A live departures board showing the next three services from the saved station, expandable to twelve, with scheduled time, destination, remaining stops, line, delay status, and expected arrival.
-- Line, departing station, and destination are chosen from searchable dropdowns in the board's own control bar, with a swap control that reverses the journey. There is no separate settings screen.
-- Service alerts on the relevant lines appear as severity-coded indicators on the board, alongside a full severity-grouped disruption feed.
-- Estimated train positions across all 16 Metro lines, animated along GTFS track geometry using PTV predicted departure times.
-- The chosen line filters departures, alerts, and the map at once. Leaving it unset shows the whole network.
-- Full daily line timetables for eight Melbourne dates, including direction selection, branch variants, express-service gaps, overnight GTFS times, sticky identifiers, and horizontal scrolling.
-- Delay indicators for predictions at least three minutes behind schedule, and a data-freshness readout that warns when the live snapshot goes stale.
+- A live departures board showing the next four services from the saved station, expandable to twelve. Each row carries the countdown, the scheduled time as its permanent identity, the expected time beside it as a status, the platform, the line name, and a described stopping pattern.
+- Departing station is the board's scope; destination and line are filters over it, reflected into the URL as `?from=&to=&line=` so a filtered board can be shared.
+- Cancelled services stay on the board, marked in red with the word "Cancelled", stripped of platform and delay detail, and pointing at the next service on the same line.
+- Every row states whether its times are real-time or timetable-only, so predictions and schedule are never silently mixed.
+- Major disruptions surface on the board itself; the full alert feed is split into "affecting travel now" and "upcoming", filtered by line and severity.
+- Train positions across all 16 Metro lines use GTFS-Realtime vehicle coordinates where the feed supplies them, falling back to interpolation along GTFS track geometry. The two are drawn differently.
+- The chosen line filters departures, alerts, the timetable, and the map at once, from a single control in the header. Leaving it unset shows the whole network.
+- Full daily line timetables for eight Melbourne dates, station-first by default with hour grouping, a "now" marker and a persistent jump-to-now. The full service-by-station grid is a desktop toggle.
+- Timetable services are clustered by stopping pattern, not only by direction, so named variants such as "via City Loop" can be selected directly.
+- Delay indicators for predictions at least three minutes behind schedule, and a data-freshness ladder that degrades to labelled scheduled times rather than going blank.
 - Opt-in browser notifications for an approaching train. Permission is requested only from the bell control on the departures board.
 - Every section is a collapsible card whose state persists, and navigation expands a collapsed target before scrolling to it.
 - Bottom tab navigation on phones and a single scrolling page on desktop, both driven by the same four sections. Pull to refresh re-polls live data on mobile.
@@ -33,7 +36,9 @@ The Vite frontend is a fully static React and TypeScript site. GitHub Actions re
 
 `public/data/network-static.json` contains the 16 lines, official colours, canonical station sequences, station coordinates, and route polylines. `scripts/generate-static-data.ts` creates the artifact from the Victorian GTFS Schedule feed.
 
-Shared stations are deduplicated by normalized name. Each line uses a canonical primary alignment; legacy City Loop variants are excluded when a direct alignment exists, while the Metro Tunnel corridor remains the primary alignment for the Sunbury, Cranbourne, and Pakenham lines.
+Shared stations are deduplicated by normalized name, and platform-level GTFS stop ids are carried through as `gtfsStops` so departures can show a scheduled platform.
+
+Station sets and route geometry are derived separately. A line's `stationIds` is the union of every trip on the route, which is why Flagstaff, Melbourne Central and Parliament exist; its `polyline` still comes from one canonical direct alignment, so the map draws a single legible track per line. Stations that sit off that alignment are marked `offCanonicalAlignment`. The Metro Tunnel corridor remains the canonical alignment for the Sunbury, Cranbourne, and Pakenham lines.
 
 ### Daily timetable data
 
@@ -45,9 +50,13 @@ The `refresh-timetable.yml` workflow downloads the official feed daily, runs tim
 
 ### Live snapshot data
 
-`public/data/network-live.json` contains scheduled and estimated departure times plus current line disruptions. `scripts/fetch-live-data.ts` uses bounded-concurrency requests to the PTV Timetable API endpoints for routes, stops, departures, and disruptions.
+`public/data/network-live.json` contains scheduled and estimated departure times, per-service status, vehicle positions where published, and current line disruptions.
 
-The `refresh-data.yml` workflow runs every five minutes and performs three sub-fetches approximately 80 seconds apart. Each changed snapshot is committed. An explicit deployment dispatch follows changed data because pushes made with the workflow `GITHUB_TOKEN` do not trigger other push workflows.
+`scripts/fetch-live-data.ts` layers the Victorian GTFS-Realtime feeds over the timetable this repository already ships. Three requests — trip updates, vehicle positions, and one PTV `/v3/disruptions?route_types=0` call — replace the roughly 300 per-station PTV polls the previous implementation needed to reconstruct trips. Trip identity, stopping pattern and destination come from the timetable; the realtime feed supplies only deltas, which is what makes per-service cancellations, real coordinates and platform numbers available at all.
+
+Each realtime `trip_id` is resolved through the calendar active on its `start_date`, with a fallback across sibling ids that differ only in the version segment. The script logs an unmatched-trip rate as a staleness canary, and falls back to a schedule-only snapshot when the feed is unreachable.
+
+The `refresh-data.yml` workflow runs every five minutes and commits each changed snapshot. An explicit deployment dispatch follows changed data because pushes made with the workflow `GITHUB_TOKEN` do not trigger other push workflows.
 
 The frontend polls the committed live snapshot every 30 seconds and recomputes train positions in a shared animation loop.
 
@@ -55,23 +64,23 @@ The frontend polls the committed live snapshot every 30 seconds and recomputes t
 
 The interface is implemented with React 19, TypeScript, Tailwind CSS, Radix UI primitives, Motion, local Magic UI-style components, and MapLibre GL JS. The map uses CARTO Positron raster tiles, keyed by `VITE_CARTO_BASEMAP_KEY`, and does not change style when the interface theme changes.
 
-Content is organised into five sections — Departures, Plan, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all five as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
+Content is organised into four sections — Departures, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all four as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
 
 Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeTokens` publishes that definition as a stylesheet containing a `:root` and a `.dark` block, so switching themes remains a single class toggle and the values in `src/index.css` act only as first-paint fallbacks. The map Border Beam is decorative and does not affect map interaction.
 
 ## Data semantics and limitations
 
-- **Train positions are estimates, not GPS locations.** The PTV Timetable API supplies predicted station departure times rather than vehicle coordinates. Positions are interpolated in time and projected onto the route polyline between consecutive predicted stops.
-- **Between-station movement is approximate.** Interpolation cannot represent unscheduled stops, speed changes, or delays occurring between stations.
+- **Some train positions are estimates rather than GPS locations.** Where the GTFS-Realtime vehicle-positions feed publishes coordinates for a run, the marker is the reported position. Otherwise it is interpolated in time and projected onto the route polyline between consecutive predicted stops. Interpolated markers are drawn with a dashed outline and labelled as estimated.
+- **Between-station movement is approximate when interpolated.** Interpolation cannot represent unscheduled stops, speed changes, or delays occurring between stations.
 - **Limited-stop services may cross skipped sections abruptly.** No predicted time exists for an omitted stop.
-- **Each line uses one canonical alignment.** City Loop routing and other service variants may differ from the displayed track. Shared corridors are drawn as overlapping coloured lines rather than merged infrastructure.
-- **Station identity is name-based.** Shared stations use one coordinate selected during static-data generation; platform-level differences are not represented.
-- **Delay values are prediction-based.** A `+N min` value is the difference between a stop's scheduled and current predicted departure time.
-- **Timetable cells are scheduled, not real-time.** PTV `run_ref` and GTFS `trip_id` are not guaranteed to provide a stable join, so live estimates are not merged into timetable cells.
-- **Disruptions are associated with lines.** A line alert may not affect every station or service on that line. Severity is inferred from PTV's free-text type and title because the feed carries no severity field.
-- **Platform numbers are unavailable.** The live snapshot records predicted departure times only, so the departures table cannot show a platform.
-- **Trip planning is not implemented.** The Plan a trip controls are a layout placeholder and do not search journeys.
-- **Live data requires configured credentials and a successful refresh.** When no live artifact is available, or a refresh fails, the interface uses a labelled sample preview with synthetic trains.
+- **Each line is drawn on one canonical alignment.** City Loop and other service variants are present as stations but may differ from the displayed track. Shared corridors are drawn as overlapping coloured lines rather than merged infrastructure.
+- **Station identity is name-based.** Shared stations use one coordinate selected during static-data generation.
+- **Delay values are prediction-based.** A `+N min` value is the difference between a stop's scheduled and current predicted departure time. A stop with no published prediction shows no delay rather than assuming it is on time.
+- **Timetable cells are scheduled, not real-time.** A departure row links to its service in the timetable, but live estimates are not merged into timetable cells.
+- **Disruptions are associated with lines.** A line alert may not affect every station or service on that line. Severity comes from PTV's own `display_on_board` flag and severity colour rather than from the wording of the title. Notices that PTV publishes once per affected line are merged into a single incident.
+- **Platform numbers come from the realtime feed, not the timetable.** A trip update names a platform-level GTFS stop id, which resolves to a `platform_code` through the `gtfsStops` index. Services the realtime feed has not yet picked up — and every service in a schedule-only snapshot — therefore show no platform at all rather than a guessed one.
+- **Trip planning is not implemented.** The destination field filters departures; it does not search journeys, interchanges, or other modes.
+- **Live data requires configured credentials and a successful refresh.** When no live artifact is available, the interface falls back to genuine scheduled times from the shipped timetable, clearly labelled as timetable-only. No synthetic services are ever displayed.
 - **The PWA does not provide offline service data.**
 
 ## Project structure
@@ -88,6 +97,7 @@ Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeToke
 │   ├── lib/
 │   │   ├── concurrency.ts
 │   │   ├── csv.ts
+│   │   ├── gtfsRealtime.ts
 │   │   ├── lines.ts
 │   │   ├── ptvClient.ts
 │   │   └── timetable.ts
@@ -123,11 +133,11 @@ npm install
 npm run dev
 ```
 
-The server prints the local URL, normally `http://localhost:5173`. Without a live snapshot, the interface displays the labelled sample preview.
+The server prints the local URL, normally `http://localhost:5173`. Without a live snapshot, the interface falls back to the shipped scheduled timetable, labelled as timetable-only.
 
-### PTV credentials
+### Credentials
 
-Register for PTV Timetable API access at <https://www.vic.gov.au/public-transport-timetable-api>.
+Register for GTFS-Realtime access at <https://opendata.transport.vic.gov.au> and for PTV Timetable API access at <https://www.vic.gov.au/public-transport-timetable-api>.
 
 Copy the environment template and set the local credentials:
 
@@ -137,9 +147,10 @@ cp .env.example .env
 
 Set:
 
-- `PTV_DEV_ID`: PTV Timetable API developer ID.
+- `VIC_GTFS_R_KEY`: Victorian GTFS-Realtime key, sent as the `KeyID` request header. This is the source of live departures, cancellations and vehicle positions.
+- `PTV_DEV_ID`: PTV Timetable API developer ID. Now used only for disruptions and route-name validation.
 - `PTV_API_KEY`: PTV Timetable API signing key.
-- `VITE_CARTO_BASEMAP_KEY`: CARTO basemap key, free from <https://carto.com/basemaps/apikey>. CARTO watermarks raster tiles requested without one. Unlike the PTV credentials, the `VITE_` prefix means this value is inlined into the browser bundle and is public by design; CARTO issues it against a nominated domain.
+- `VITE_CARTO_BASEMAP_KEY`: CARTO basemap key, free from <https://carto.com/basemaps/apikey>. CARTO watermarks raster tiles requested without one. Unlike the other credentials, the `VITE_` prefix means this value is inlined into the browser bundle and is public by design; CARTO issues it against a nominated domain.
 
 Do not commit `.env`.
 
@@ -166,7 +177,9 @@ npm run generate:timetable     # Generate eight Melbourne dates from GTFS_DIR
 
 ## GitHub Actions configuration
 
-Add `PTV_DEV_ID` and `PTV_API_KEY` as repository Actions secrets. The live refresh workflow skips API fetching when either secret is absent. Timetable generation still uses GTFS and reports PTV route validation as unavailable.
+Add `VIC_GTFS_R_KEY`, `PTV_DEV_ID`, `PTV_API_KEY` and `VITE_CARTO_BASEMAP_KEY` as repository Actions secrets.
+
+Without `VIC_GTFS_R_KEY` the live refresh publishes a schedule-only snapshot rather than failing. Without the PTV pair it omits disruptions, and timetable generation reports PTV route validation as unavailable. `VITE_CARTO_BASEMAP_KEY` is required: `deploy.yml` fails the build when it is empty, because the alternative is silently shipping watermarked tiles.
 
 Configure GitHub Pages with **Settings → Pages → Source → GitHub Actions**.
 
@@ -175,6 +188,7 @@ Configure GitHub Pages with **Settings → Pages → Source → GitHub Actions**
 ## Attribution
 
 - Station, route, timetable, and colour data: [Victorian GTFS Schedule](https://opendata.transport.vic.gov.au/dataset/gtfs-schedule), Department of Transport and Planning, licensed under CC BY 4.0.
-- Predicted departures and disruptions: [PTV Timetable API v3](https://www.vic.gov.au/public-transport-timetable-api).
+- Real-time departures, cancellations and vehicle positions: [Victorian GTFS-Realtime](https://opendata.transport.vic.gov.au/dataset/gtfs-realtime), Department of Transport and Planning, licensed under CC BY 4.0.
+- Service disruptions: [PTV Timetable API v3](https://www.vic.gov.au/public-transport-timetable-api).
 - Basemap: [CARTO Positron](https://carto.com/attributions), © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 - Interface font: [IBM Plex Mono](https://github.com/IBM/plex), self-hosted through Fontsource packages.

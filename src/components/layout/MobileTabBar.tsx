@@ -30,9 +30,10 @@ export function MobileTabBar({ activeSection, onSelect, alertCount, hasCriticalA
                 onClick={() => onSelect(id)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  // 10px, not 11px: five tabs leave ~72px each at 360px, and
-                  // "Departures" has no space to wrap on if it overflows.
-                  "relative flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] font-medium transition-colors",
+                  // Four tabs leave ~90px each at 360px, enough for the label
+                  // to sit at the same size as the rest of the app's fine print
+                  // rather than the 10px the five-tab layout forced.
+                  "relative flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-2xs font-medium transition-colors",
                   isActive ? "text-brand" : "text-muted-foreground",
                 )}
               >
@@ -41,7 +42,7 @@ export function MobileTabBar({ activeSection, onSelect, alertCount, hasCriticalA
                   {id === "alerts" && alertCount > 0 && (
                     <span
                       className={cn(
-                        "absolute -top-1 -right-2 flex min-w-4 justify-center rounded-full px-1 text-[9px] leading-4 font-semibold",
+                        "absolute -top-1 -right-2 flex min-w-4 justify-center rounded-full px-1 text-3xs leading-4 font-semibold",
                         hasCriticalAlert ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-surface",
                       )}
                     >

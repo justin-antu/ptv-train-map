@@ -50,13 +50,22 @@ export class TrainMarkerLayer {
       // Skip marker reprojection and style writes while position and delay are
       // unchanged.
       const prev = tracked.position;
-      const unchanged = prev.lon === pos.lon && prev.lat === pos.lat && prev.delayMin === pos.delayMin;
+      const unchanged = prev.lon === pos.lon
+        && prev.lat === pos.lat
+        && prev.delayMin === pos.delayMin
+        && prev.source === pos.source;
       tracked.position = pos;
       if (!unchanged) {
         const el = tracked.marker.getElement();
         const delayed = pos.delayMin >= DELAYED_THRESHOLD_MIN;
-        el.title = delayed ? `To ${pos.destinationName} (+${pos.delayMin} min late)` : `To ${pos.destinationName}`;
+        // An interpolated marker is a guess between two timetabled calls, so it
+        // says so rather than implying the same confidence as a real GPS fix.
+        const provenance = pos.source === "gps" ? "live position" : "estimated position";
+        el.title = delayed
+          ? `To ${pos.destinationName} (+${pos.delayMin} min late, ${provenance})`
+          : `To ${pos.destinationName} (${provenance})`;
         el.classList.toggle("train-marker--delayed", delayed);
+        el.classList.toggle("train-marker--estimated", pos.source !== "gps");
         const dot = el.querySelector<HTMLElement>(".train-marker-dot");
         if (dot) dot.style.background = this.lineColorById.get(pos.lineId) ?? "#333";
         tracked.marker.setLngLat([pos.lon, pos.lat]);

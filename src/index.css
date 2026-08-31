@@ -136,7 +136,7 @@
   }
 
   .type-label {
-    @apply text-[11px] font-medium tracking-wide uppercase;
+    @apply text-2xs font-medium tracking-wide uppercase;
   }
 
   .type-data {
@@ -146,6 +146,25 @@
 
   .type-numeric {
     font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * Gives a visually small control a 44px touch target without making it
+   * occupy 44px of layout. The icon buttons in the departures bar are 36px,
+   * which clears WCAG 2.5.8's 24px minimum but not a thumb on a moving train.
+   */
+  .touch-target {
+    position: relative;
+  }
+
+  .touch-target::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -196,6 +215,16 @@
   border-radius: 50%;
   border: 2px solid #ffffff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/*
+ * An interpolated marker is a guess between two timetabled calls, not a
+ * measured position. A dashed ring reads as "approximate" without relying on
+ * colour, which the delayed state already uses.
+ */
+.train-marker--estimated .train-marker-dot {
+  border-style: dashed;
+  opacity: 0.8;
 }
 
 .train-marker--delayed .train-marker-dot {

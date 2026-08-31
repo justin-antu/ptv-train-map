@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Header } from "../Header";
 import { Footer } from "../Footer";
@@ -7,9 +7,12 @@ import { SectionErrorBoundary } from "./SectionErrorBoundary";
 import { CollapsedSectionsProvider, useCollapsedSections } from "./collapsedSections";
 import { SectionNavigationProvider } from "./sectionNavigation";
 import { APP_SECTIONS, DEFAULT_SECTION_ID, isSectionId, type SectionId } from "./sections";
+import type { SelectItem } from "../SearchableSelect";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useNow } from "../../hooks/useNow";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 import type { Theme } from "../../hooks/useTheme";
+import { describeFreshness } from "../../data/freshness";
 import { cn } from "../../lib/utils";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -17,12 +20,18 @@ const DESKTOP_QUERY = "(min-width: 1024px)";
 interface AppShellProps {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
-  isDemo: boolean;
+  isScheduleOnly: boolean;
   generatedAtUtc: string | null;
+  /** When the upstream predictions were made, which is what actually ages. */
+  feedTimestampUtc: string | null;
   trainCount: number;
   alertCount: number;
   hasCriticalAlert: boolean;
   onRefresh: () => Promise<void> | void;
+  /** Every in-scope line, for the header's app-wide scope control. */
+  lineItems: SelectItem[];
+  scopeLineId: string | null;
+  onScopeLineChange: (lineId: string | null) => void;
   /** Rendered content for each section, keyed by section id. */
   sections: Record<SectionId, ReactNode>;
 }
@@ -48,16 +57,31 @@ export function AppShell(props: AppShellProps) {
 function AppShellContent({
   theme,
   onThemeChange,
-  isDemo,
+  isScheduleOnly,
   generatedAtUtc,
+  feedTimestampUtc,
   trainCount,
   alertCount,
   hasCriticalAlert,
   onRefresh,
+  lineItems,
+  scopeLineId,
+  onScopeLineChange,
   sections,
 }: AppShellProps) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const { expand } = useCollapsedSections();
+  // The masthead's status dot and the departure board both read from this one
+  // ladder, so they can never disagree about how live the times are. A 30s tick
+  // is finer than the ladder's own minute granularity.
+  const freshnessNow = useNow(30_000);
+  const freshness = useMemo(
+    () => describeFreshness(
+      { generatedAtUtc: generatedAtUtc ?? "", feedTimestampUtc: feedTimestampUtc ?? undefined, isScheduleOnly },
+      freshnessNow,
+    ),
+    [generatedAtUtc, feedTimestampUtc, isScheduleOnly, freshnessNow],
+  );
   // A shared link or a reload lands on the section named in the URL fragment.
   const [activeSection, setActiveSection] = useState<SectionId>(() => {
     const fragment = window.location.hash.slice(1);
@@ -85,11 +109,28 @@ function AppShellContent({
     [isDesktop, expand],
   );
 
+  // The masthead is a "home" control, so unlike a nav link it returns to the
+  // very top of the page rather than to the departures card's own offset.
+  const goHome = useCallback(() => {
+    navigate(DEFAULT_SECTION_ID);
+    if (isDesktop) {
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    }
+  }, [navigate, isDesktop]);
+
   // Keep the fragment current so the view can be shared or reloaded, without
   // filling the back stack with tab switches.
   useEffect(() => {
     const fragment = `#${activeSection}`;
-    if (window.location.hash !== fragment) window.history.replaceState(null, "", fragment);
+    if (window.location.hash === fragment) return;
+    // The query string belongs to the departure board's own state, so the
+    // fragment is rewritten in place rather than by assigning a bare "#id",
+    // which would drop it.
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}${fragment}`,
+    );
   }, [activeSection]);
 
   // On desktop every section is on one page, so the nav highlight follows
@@ -119,11 +160,15 @@ function AppShellContent({
         <Header
           theme={theme}
           onThemeChange={onThemeChange}
-          isDemo={isDemo}
-          generatedAtUtc={generatedAtUtc}
+          freshnessLabel={freshness.label}
+          freshnessTone={freshness.tone}
           trainCount={trainCount}
           activeSection={activeSection}
           onNavigate={navigate}
+          onHome={goHome}
+          lineItems={lineItems}
+          scopeLineId={scopeLineId}
+          onScopeLineChange={onScopeLineChange}
         />
 
         {(pull.distance > 0 || pull.refreshing) && (

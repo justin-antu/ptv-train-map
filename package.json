@@ -11,13 +11,15 @@
     "typecheck": "tsc --noEmit",
     "generate:static-data": "tsx scripts/generate-static-data.ts",
     "generate:timetable": "tsx scripts/generate-timetable.ts",
-    "fetch:live-data": "tsx scripts/fetch-live-data.ts"
+    "fetch:live-data": "tsx scripts/fetch-live-data.ts",
+    "spike:gtfsr": "tsx scripts/spike-gtfsr.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@radix-ui/react-icons": "^1.3.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "gtfs-realtime-bindings": "^2.2.0",
     "lucide-react": "^1.31.0",
     "maplibre-gl": "^4.7.1",
     "motion": "^13.1.0",

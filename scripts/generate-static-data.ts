@@ -24,7 +24,8 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { streamCsv } from "./lib/csv.ts";
 import { IN_SCOPE_LINE_NAMES, lineIdFromName } from "./lib/lines.ts";
-import type { LineStatic, NetworkStaticData, StationStatic } from "../src/shared/types.ts";
+import { unionStationOrder } from "./lib/timetable.ts";
+import type { GtfsStopRef, LineStatic, NetworkStaticData, StationStatic } from "../src/shared/types.ts";
 
 const GTFS_DIR = process.env.GTFS_DIR ?? path.resolve("gtfs-download/metro-train");
 const OUTPUT_PATH = path.resolve("public/data/network-static.json");
@@ -58,27 +59,41 @@ async function loadRouteInfo(): Promise<Map<string, RouteInfo>> {
   return byName;
 }
 
+interface StopInfo {
+  name: string;
+  lat: number;
+  lon: number;
+  /** GTFS platform_code, e.g. "3". Metro publishes one for every stop stop_times references. */
+  platformCode: string;
+}
+
 /** Pass 2: stops.txt — small file (~400KB), load every stop into memory once. */
-async function loadAllStops(): Promise<Map<string, { name: string; lat: number; lon: number }>> {
-  const info = new Map<string, { name: string; lat: number; lon: number }>();
+async function loadAllStops(): Promise<Map<string, StopInfo>> {
+  const info = new Map<string, StopInfo>();
   await streamCsv(path.join(GTFS_DIR, "stops.txt"), (row) => {
     info.set(row.stop_id, {
       name: row.stop_name.replace(/\s+Railway Station$|\s+Station$/i, "").trim(),
       lat: Number(row.stop_lat),
       lon: Number(row.stop_lon),
+      platformCode: (row.platform_code ?? "").trim(),
     });
   });
   return info;
 }
 
-/** Pass 3: trips.txt — for each in-scope route, collect its trip_id -> shape_id map. */
-async function loadTripsPerRoute(routeIds: Set<string>): Promise<Map<string, Map<string, string>>> {
-  const perRoute = new Map<string, Map<string, string>>();
+interface TripRef {
+  shapeId: string;
+  directionId: string;
+}
+
+/** Pass 3: trips.txt — for each in-scope route, collect its trip_id -> {shape, direction} map. */
+async function loadTripsPerRoute(routeIds: Set<string>): Promise<Map<string, Map<string, TripRef>>> {
+  const perRoute = new Map<string, Map<string, TripRef>>();
   for (const routeId of routeIds) perRoute.set(routeId, new Map());
 
   await streamCsv(path.join(GTFS_DIR, "trips.txt"), (row) => {
     const tripsForRoute = perRoute.get(row.route_id);
-    if (tripsForRoute) tripsForRoute.set(row.trip_id, row.shape_id);
+    if (tripsForRoute) tripsForRoute.set(row.trip_id, { shapeId: row.shape_id, directionId: row.direction_id || "0" });
   });
 
   for (const [routeId, trips] of perRoute) {
@@ -121,18 +136,22 @@ async function loadShapesById(neededShapeIds: Set<string>): Promise<Map<string, 
 }
 
 /**
- * The map represents each line with its primary direct alignment. Select the
- * longest trip that excludes City Loop-only stations, falling back to the
- * longest overall trip when no direct variant exists.
+ * Identifies City Loop trip variants. Southern Cross is excluded because it
+ * belongs to several direct alignments; Metro Tunnel stations likewise stay
+ * part of the primary alignment for Sunbury, Cranbourne and Pakenham.
  *
- * Flagstaff, Melbourne Central, and Parliament identify City Loop variants.
- * Southern Cross is excluded because it belongs to several direct alignments.
- *
- * Metro Tunnel stations remain part of the primary alignment for the Sunbury,
- * Cranbourne, and Pakenham lines.
+ * This pattern selects the *geometry* only. It used to gate the station list
+ * as well, which is why Flagstaff, Melbourne Central and Parliament — three of
+ * the busiest stations on the network — could be looked up in the timetable but
+ * appeared nowhere in the station data the departures board and the map read.
  */
 const CITY_LOOP_ONLY_STOP_NAME_PATTERN = /flagstaff|melbourne central|parliament/i;
 
+/**
+ * The map draws one canonical direct alignment per line: the longest trip that
+ * avoids the City Loop, falling back to the longest overall trip when no direct
+ * variant exists.
+ */
 function findCanonicalTripStops(
   tripIds: Iterable<string>,
   tripStops: Map<string, StopTimeEntry[]>,
@@ -197,38 +216,73 @@ async function main() {
 
     const { tripId, stops: bestStops } = findCanonicalTripStops(tripShapeId.keys(), tripStops, allStops, lineName);
 
-    const shapeId = tripShapeId.get(tripId);
-    if (!shapeId) throw new Error(`Trip ${tripId} (line ${lineName}) has no shape_id`);
-    neededShapeIds.add(shapeId);
+    const tripRef = tripShapeId.get(tripId);
+    if (!tripRef?.shapeId) throw new Error(`Trip ${tripId} (line ${lineName}) has no shape_id`);
+    neededShapeIds.add(tripRef.shapeId);
     chosenTripAndStopsByLine.set(lineName, { tripId, stops: bestStops });
-    console.log(`  ${lineName}: using trip ${tripId} (${bestStops.length} stops, shape ${shapeId})`);
+    console.log(`  ${lineName}: using trip ${tripId} (${bestStops.length} stops, shape ${tripRef.shapeId})`);
   }
 
   const shapesById = await loadShapesById(neededShapeIds);
 
+  const gtfsStops: Record<string, GtfsStopRef> = {};
+  const onSomeCanonicalAlignment = new Set<string>();
+
+  const registerStation = (stopId: string, lineId: string, lineName: string): string => {
+    const info = allStops.get(stopId);
+    if (!info) throw new Error(`Missing stop info for stop_id ${stopId} (line ${lineName})`);
+    const slug = slugify(info.name);
+
+    let station = stationsBySlug.get(slug);
+    if (!station) {
+      station = { id: slug, name: info.name, lat: info.lat, lon: info.lon, gtfsStopId: stopId, lineIds: [] };
+      stationsBySlug.set(slug, station);
+    }
+    if (!station.lineIds.includes(lineId)) station.lineIds.push(lineId);
+
+    gtfsStops[stopId] = info.platformCode ? { stationId: slug, platformCode: info.platformCode } : { stationId: slug };
+    return slug;
+  };
+
   for (const lineName of IN_SCOPE_LINE_NAMES) {
     const routeInfo = routeInfoByName.get(lineName)!;
     const { tripId, stops } = chosenTripAndStopsByLine.get(lineName)!;
-    const shapeId = tripsPerRoute.get(routeInfo.routeId)!.get(tripId)!;
-    const polyline = shapesById.get(shapeId);
-    if (!polyline || polyline.length === 0) throw new Error(`No shape points found for shape_id ${shapeId} (line ${lineName})`);
+    const routeTrips = tripsPerRoute.get(routeInfo.routeId)!;
+    const canonicalTrip = routeTrips.get(tripId)!;
+    const polyline = shapesById.get(canonicalTrip.shapeId);
+    if (!polyline || polyline.length === 0) {
+      throw new Error(`No shape points found for shape_id ${canonicalTrip.shapeId} (line ${lineName})`);
+    }
 
     const lineId = lineIdFromName(lineName);
-    const stationIds: string[] = [];
 
-    for (const stop of stops) {
-      const info = allStops.get(stop.stopId);
-      if (!info) throw new Error(`Missing stop info for stop_id ${stop.stopId} (line ${lineName})`);
-      const slug = slugify(info.name);
+    // Geometry comes from the canonical direct trip; the station list comes
+    // from every trip on the route. Keeping these separate is what lets the
+    // City Loop stations exist as real, searchable destinations while the map
+    // still draws one unbranched alignment per line.
+    const canonicalStationIds = stops.map((stop) => registerStation(stop.stopId, lineId, lineName));
+    for (const stationId of canonicalStationIds) onSomeCanonicalAlignment.add(stationId);
 
-      let station = stationsBySlug.get(slug);
-      if (!station) {
-        station = { id: slug, name: info.name, lat: info.lat, lon: info.lon, gtfsStopId: stop.stopId, lineIds: [] };
-        stationsBySlug.set(slug, station);
+    // Only same-direction trips contribute to the ordering. Unioning both
+    // directions would assert every adjacency twice in opposite senses, and the
+    // resulting cycle collapses the topological sort into near-random order.
+    // Opposite-direction trips are still walked, so their stations are
+    // registered — they just do not vote on position.
+    const sequences: string[][] = [canonicalStationIds];
+    for (const [otherTripId, otherRef] of routeTrips) {
+      const otherStops = tripStops.get(otherTripId);
+      if (!otherStops || otherStops.length < 2) continue;
+      const sequence: string[] = [];
+      for (const stop of [...otherStops].sort((a, b) => a.sequence - b.sequence)) {
+        const slug = registerStation(stop.stopId, lineId, lineName);
+        if (sequence.at(-1) !== slug) sequence.push(slug);
       }
-      if (!station.lineIds.includes(lineId)) station.lineIds.push(lineId);
-      stationIds.push(slug);
+      if (otherRef.directionId === canonicalTrip.directionId) sequences.push(sequence);
     }
+
+    // A topological union preserves every observed adjacency, so a station only
+    // some trips call at still lands between the right neighbours.
+    const stationIds = unionStationOrder(sequences);
 
     lines.push({
       id: lineId,
@@ -240,15 +294,25 @@ async function main() {
     });
   }
 
+  // Flagged only once every line's canonical alignment is known: Southern
+  // Cross, for instance, is off one line's drawn geometry but squarely on
+  // another's, and should not be marked.
+  for (const station of stationsBySlug.values()) {
+    if (!onSomeCanonicalAlignment.has(station.id)) station.offCanonicalAlignment = true;
+  }
+
   const output: NetworkStaticData = {
     lines,
     stations: [...stationsBySlug.values()],
+    gtfsStops,
     generatedAt: new Date().toISOString(),
   };
 
-  await writeFile(OUTPUT_PATH, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+  await writeFile(OUTPUT_PATH, `${JSON.stringify(output)}\n`, "utf8");
+  const offAlignment = output.stations.filter((station) => station.offCanonicalAlignment);
   console.log(
-    `Wrote ${lines.length} lines, ${output.stations.length} unique stations to ${OUTPUT_PATH}`,
+    `Wrote ${lines.length} lines, ${output.stations.length} unique stations ` +
+      `(${offAlignment.length} off the canonical alignment) and ${Object.keys(gtfsStops).length} platform stops to ${OUTPUT_PATH}`,
   );
 }
 

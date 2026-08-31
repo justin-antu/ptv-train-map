@@ -1,6 +1,5 @@
-import { forwardRef } from "react";
 import { SectionCard } from "../layout/SectionCard";
-import { MapView, type MapViewHandle } from "../MapView";
+import { MapView } from "../MapView";
 import { NetworkStatsCard } from "../panels/NetworkStatsCard";
 import { SelectedInfoCard } from "../panels/SelectedInfoCard";
 import { BorderBeam } from "../ui/border-beam";
@@ -21,7 +20,6 @@ interface NetworkSectionProps {
   preferences: DeparturePreferencesController;
   trainsRunning: number;
   linesActive: number;
-  disruptionCount: number;
   onStationSelect: (stationId: string) => void;
   onTrainSelect: (pos: { lineId: string; runRef: string }) => void;
   onBackgroundClick: () => void;
@@ -32,26 +30,22 @@ interface NetworkSectionProps {
  * The live map. Secondary to the departure board, so it sits behind its own tab
  * on mobile.
  */
-export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(function NetworkSection(
-  {
-    staticData,
-    stationsById,
-    lineNameById,
-    lineColorById,
-    runs,
-    visibleLineIds,
-    selection,
-    preferences,
-    trainsRunning,
-    linesActive,
-    disruptionCount,
-    onStationSelect,
-    onTrainSelect,
-    onBackgroundClick,
-    onClearSelection,
-  },
-  ref,
-) {
+export function NetworkSection({
+  staticData,
+  stationsById,
+  lineNameById,
+  lineColorById,
+  runs,
+  visibleLineIds,
+  selection,
+  preferences,
+  trainsRunning,
+  linesActive,
+  onStationSelect,
+  onTrainSelect,
+  onBackgroundClick,
+  onClearSelection,
+}: NetworkSectionProps) {
   const visibleLines = staticData.lines.filter((line) => visibleLineIds.has(line.id));
 
   return (
@@ -60,7 +54,7 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
       title="Network map"
       description={
         visibleLines.length === 1
-          ? `Showing ${visibleLines[0].name} only — change this with the line filter`
+          ? `Showing the ${visibleLines[0].name} line only`
           : "Estimated live train positions"
       }
     >
@@ -70,7 +64,6 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
           aria-label={`${NETWORK_SUBTITLE} live map`}
         >
           <MapView
-            ref={ref}
             staticData={staticData}
             stationsById={stationsById}
             lineColorById={lineColorById}
@@ -91,12 +84,7 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
         </div>
 
         <div className="flex min-w-0 flex-col gap-3">
-          <NetworkStatsCard
-            trainsRunning={trainsRunning}
-            linesActive={linesActive}
-            stationCount={staticData.stations.length}
-            disruptionCount={disruptionCount}
-          />
+          <NetworkStatsCard trainsRunning={trainsRunning} linesActive={linesActive} />
           <SelectedInfoCard
             selection={selection}
             stationsById={stationsById}
@@ -110,4 +98,4 @@ export const NetworkSection = forwardRef<MapViewHandle, NetworkSectionProps>(fun
       </div>
     </SectionCard>
   );
-});
+}
