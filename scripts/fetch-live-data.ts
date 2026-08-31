@@ -221,6 +221,21 @@ function buildRun(
   const predictions = update ? predictionsByStation(update, trip, stops_) : new Map<string, StationPrediction>();
   let sawPrediction = false;
 
+  /**
+   * The last known delay, carried forward across calls the feed said nothing
+   * about.
+   *
+   * Metro publishes a partial slice of each trip — measured against this feed,
+   * the median trip update covers 43% of its own calls and 54% of trips have
+   * outright holes in the middle of the slice they do publish. Reading only the
+   * published entries therefore reports a train as on time at most of the
+   * stations someone might be waiting at, while the entries either side of the
+   * gap both say it is running late. GTFS-Realtime's own semantics are that a
+   * delay persists until superseded, so it is carried until the next explicit
+   * entry and flagged, never silently presented as a first-hand prediction.
+   */
+  let carriedDelayMs: number | null = null;
+
   const stops: LiveRunStop[] = trip.calls.map((call) => {
     const scheduled = melbourneServiceTimeToUtc(serviceDate, call.minutes);
     const stop: LiveRunStop = {
@@ -229,10 +244,23 @@ function buildRun(
     };
 
     const prediction = predictions.get(call.stationId);
-    if (!prediction) return stop;
+
+    if (!prediction) {
+      // Nothing forward of the last published call is invented, and nothing
+      // before the first one is back-filled: a carry only exists once the feed
+      // has actually said something about this trip.
+      if (carriedDelayMs !== null) {
+        stop.estimatedTimeUtc = new Date(scheduled.getTime() + carriedDelayMs).toISOString();
+        stop.isPropagated = true;
+      }
+      return stop;
+    }
+
     if (prediction.platform) stop.platform = prediction.platform;
 
     if (prediction.isSkipped) {
+      // Skipping one station says nothing about the next, so the carry is left
+      // untouched rather than reset or propagated as a further skip.
       stop.isSkipped = true;
       sawPrediction = true;
       return stop;
@@ -242,9 +270,16 @@ function buildRun(
     // is a delta the consumer has to apply to the schedule itself. A delay of
     // exactly zero is a real "on time" prediction, not a missing value.
     if (prediction.absoluteTimeSeconds !== null) {
-      stop.estimatedTimeUtc = new Date(prediction.absoluteTimeSeconds * 1000).toISOString();
+      const estimated = prediction.absoluteTimeSeconds * 1000;
+      stop.estimatedTimeUtc = new Date(estimated).toISOString();
+      carriedDelayMs = estimated - scheduled.getTime();
     } else if (prediction.delaySeconds !== null) {
-      stop.estimatedTimeUtc = new Date(scheduled.getTime() + prediction.delaySeconds * 1000).toISOString();
+      carriedDelayMs = prediction.delaySeconds * 1000;
+      stop.estimatedTimeUtc = new Date(scheduled.getTime() + carriedDelayMs).toISOString();
+    } else if (carriedDelayMs !== null) {
+      stop.estimatedTimeUtc = new Date(scheduled.getTime() + carriedDelayMs).toISOString();
+      stop.isPropagated = true;
+      return stop;
     } else {
       return stop;
     }
@@ -282,6 +317,54 @@ function buildRun(
 interface GtfsStopIndex {
   stationIdByStopId: Map<string, string>;
   platformByStopId: Map<string, string>;
+}
+
+/**
+ * Builds a run for a service the timetable does not contain.
+ *
+ * Roughly one in fifteen trips in the peak feed is `ADDED` — a genuine train
+ * carrying genuine passengers that exists only in the realtime feed. These were
+ * previously dropped, so they were missing from the board and the map while
+ * simultaneously inflating the unmatched-trip alarm.
+ *
+ * An added trip has no timetable to compare against, so its advertised time is
+ * its scheduled time: there is no delay to report, and claiming one would be
+ * inventing a baseline that was never published.
+ */
+function buildAddedRun(
+  update: RealtimeTripUpdate,
+  lineId: string,
+  stops_: GtfsStopIndex,
+  stationNameById: Map<string, string>,
+): LiveRun | null {
+  const stops: LiveRunStop[] = [];
+
+  for (const stopUpdate of update.stopUpdates) {
+    const stationId = stopUpdate.stopId ? stops_.stationIdByStopId.get(stopUpdate.stopId) : undefined;
+    const timeSeconds = stopUpdate.departureTimeSeconds ?? stopUpdate.arrivalTimeSeconds;
+    if (!stationId || timeSeconds === null) continue;
+
+    const timeUtc = new Date(timeSeconds * 1000).toISOString();
+    const stop: LiveRunStop = { stationId, scheduledTimeUtc: timeUtc, estimatedTimeUtc: timeUtc };
+    const platform = stopUpdate.stopId ? stops_.platformByStopId.get(stopUpdate.stopId) : undefined;
+    if (platform) stop.platform = platform;
+    if (stopUpdate.relationship === "skipped") stop.isSkipped = true;
+    stops.push(stop);
+  }
+
+  if (stops.length < 2) return null;
+  stops.sort((a, b) => Date.parse(a.scheduledTimeUtc) - Date.parse(b.scheduledTimeUtc));
+
+  const lastStop = stops.at(-1)!;
+  return {
+    runRef: update.tripId ?? `added:${lineId}:${stops[0].scheduledTimeUtc}`,
+    lineId,
+    directionId: update.directionId ?? 0,
+    destinationName: stationNameById.get(lastStop.stationId) ?? lastStop.stationId,
+    status: "added",
+    isRealtime: true,
+    stops,
+  };
 }
 
 function readPtvCredentials(): PtvCredentials | null {
@@ -399,20 +482,42 @@ async function main() {
     if (position.tripId) positionByTripId.set(position.tripId, position);
   }
 
+  const lineIdByRouteId = new Map<string, string>();
+  for (const line of staticData.lines) {
+    if (line.gtfsRouteId) lineIdByRouteId.set(line.gtfsRouteId, line.id);
+  }
+  const stationNameById = new Map(staticData.stations.map((station) => [station.id, station.name]));
+
   // Realtime trips first, so a service running today under an id the shipped
   // timetable does not carry still surfaces, and so the unmatched rate is
   // measured against what the operator says is running.
   const runsByTripId = new Map<string, LiveRun>();
   let unmatched = 0;
+  let added = 0;
 
   for (const update of tripUpdates) {
     if (!update.tripId) continue;
     const serviceDate = gtfsDateToIso(update.startDate) ?? today;
     const trip = resolveScheduledTrip(index, update.tripId, serviceDate);
+
     if (!trip) {
-      unmatched += 1;
+      // An ADDED trip has no timetable entry by definition, so failing to match
+      // one is the expected outcome rather than evidence of a stale timetable.
+      // Counting these as unmatched pinned the canary near its alarm threshold
+      // and made it incapable of signalling the drift it exists to catch.
+      const lineId = update.routeId ? lineIdByRouteId.get(update.routeId) : undefined;
+      if (update.relationship === "added" && lineId) {
+        const run = buildAddedRun(update, lineId, stops, stationNameById);
+        if (run) {
+          runsByTripId.set(run.runRef, run);
+          added += 1;
+          continue;
+        }
+      }
+      if (update.relationship !== "added") unmatched += 1;
       continue;
     }
+
     runsByTripId.set(trip.tripId, buildRun(trip, serviceDate, update, positionByTripId.get(update.tripId), stops));
   }
 
@@ -455,17 +560,23 @@ async function main() {
 
   const realtimeCount = runs.filter((run) => run.isRealtime).length;
   const cancelledCount = runs.filter((run) => run.status === "cancelled").length;
+  const addedCount = runs.filter((run) => run.status === "added").length;
   const gpsCount = runs.filter((run) => run.position).length;
+  const platformCount = runs.filter((run) => run.stops.some((stop) => stop.platform)).length;
   console.log(
     `Wrote ${runs.length} run(s) to ${OUTPUT_PATH}: ${realtimeCount} with real-time data, ` +
-      `${gpsCount} with a GPS fix, ${cancelledCount} cancelled.`,
+      `${gpsCount} with a GPS fix, ${platformCount} with a platform, ${cancelledCount} cancelled, ${addedCount} added.`,
   );
+  if (added > 0) console.log(`Reconstructed ${added} added service(s) that the timetable does not contain.`);
 
   // The unmatched rate is this pipeline's staleness canary. It climbs when the
   // GTFS schedule is republished with new trip ids and the shipped timetable
   // has not caught up, which manifests to a rider as trains simply missing.
-  const unmatchedRatio = tripUpdates.length > 0 ? unmatched / tripUpdates.length : 0;
-  const unmatchedSummary = `${unmatched} of ${tripUpdates.length} realtime trip(s) matched no timetabled service (${(unmatchedRatio * 100).toFixed(1)}%)`;
+  // ADDED trips are excluded: they never match by design, so counting them
+  // would hold the rate permanently near the alarm threshold.
+  const matchable = tripUpdates.filter((update) => update.relationship !== "added").length;
+  const unmatchedRatio = matchable > 0 ? unmatched / matchable : 0;
+  const unmatchedSummary = `${unmatched} of ${matchable} timetabled realtime trip(s) matched no service (${(unmatchedRatio * 100).toFixed(1)}%)`;
   if (unmatchedRatio >= UNMATCHED_TRIP_ALARM_RATIO) {
     console.error(`::error::${unmatchedSummary}. The shipped timetable is probably out of date — rerun refresh-timetable.`);
   } else if (unmatched > 0) {

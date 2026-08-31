@@ -65,6 +65,12 @@ interface StopInfo {
   lon: number;
   /** GTFS platform_code, e.g. "3". Metro publishes one for every stop stop_times references. */
   platformCode: string;
+  /**
+   * GTFS `parent_station`, e.g. "vic:rail:FSS". The realtime feed uses these
+   * station-level ids for services that have no timetable entry, so they have
+   * to resolve too, not just the numeric platform ids `stop_times` references.
+   */
+  parentStation: string;
 }
 
 /** Pass 2: stops.txt — small file (~400KB), load every stop into memory once. */
@@ -76,6 +82,7 @@ async function loadAllStops(): Promise<Map<string, StopInfo>> {
       lat: Number(row.stop_lat),
       lon: Number(row.stop_lon),
       platformCode: (row.platform_code ?? "").trim(),
+      parentStation: (row.parent_station ?? "").trim(),
     });
   });
   return info;
@@ -241,6 +248,10 @@ async function main() {
     if (!station.lineIds.includes(lineId)) station.lineIds.push(lineId);
 
     gtfsStops[stopId] = info.platformCode ? { stationId: slug, platformCode: info.platformCode } : { stationId: slug };
+    // The parent carries no platform_code by definition — it is the station,
+    // not one of its faces — so it resolves to a station with no platform
+    // rather than to an arbitrary one of its children's platforms.
+    if (info.parentStation) gtfsStops[info.parentStation] ??= { stationId: slug };
     return slug;
   };
 

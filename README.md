@@ -54,7 +54,9 @@ The `refresh-timetable.yml` workflow downloads the official feed daily, runs tim
 
 `scripts/fetch-live-data.ts` layers the Victorian GTFS-Realtime feeds over the timetable this repository already ships. Three requests — trip updates, vehicle positions, and one PTV `/v3/disruptions?route_types=0` call — replace the roughly 300 per-station PTV polls the previous implementation needed to reconstruct trips. Trip identity, stopping pattern and destination come from the timetable; the realtime feed supplies only deltas, which is what makes per-service cancellations, real coordinates and platform numbers available at all.
 
-Each realtime `trip_id` is resolved through the calendar active on its `start_date`, with a fallback across sibling ids that differ only in the version segment. The script logs an unmatched-trip rate as a staleness canary, and falls back to a schedule-only snapshot when the feed is unreachable.
+Each realtime `trip_id` is resolved through the calendar active on its `start_date`, with a fallback across sibling ids that differ only in the version segment. Measured against a weekday peak feed, every timetabled trip matches exactly and the fallback is insurance rather than load-bearing. The remaining unmatched trips are all `ADDED` services, which have no timetable entry by definition and are excluded from the staleness canary so it can still signal genuine drift.
+
+The script falls back to a schedule-only snapshot when the feed is unreachable.
 
 The `refresh-data.yml` workflow runs every five minutes and commits each changed snapshot. An explicit deployment dispatch follows changed data because pushes made with the workflow `GITHUB_TOKEN` do not trigger other push workflows.
 
@@ -78,7 +80,9 @@ Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeToke
 - **Delay values are prediction-based.** A `+N min` value is the difference between a stop's scheduled and current predicted departure time. A stop with no published prediction shows no delay rather than assuming it is on time.
 - **Timetable cells are scheduled, not real-time.** A departure row links to its service in the timetable, but live estimates are not merged into timetable cells.
 - **Disruptions are associated with lines.** A line alert may not affect every station or service on that line. Severity comes from PTV's own `display_on_board` flag and severity colour rather than from the wording of the title. Notices that PTV publishes once per affected line are merged into a single incident.
-- **Platform numbers come from the realtime feed, not the timetable.** A trip update names a platform-level GTFS stop id, which resolves to a `platform_code` through the `gtfsStops` index. Services the realtime feed has not yet picked up — and every service in a schedule-only snapshot — therefore show no platform at all rather than a guessed one.
+- **Platform numbers come from the realtime feed, not the timetable.** Every stop entry on a timetabled trip names a platform-level GTFS stop id, which resolves to a `platform_code` through the `gtfsStops` index. Trip updates reach roughly an hour ahead of departure, so services further out than that — and every service in a schedule-only snapshot — show no platform rather than a guessed one.
+- **Delay is carried forward across gaps in the realtime feed.** Metro publishes a partial slice of each trip, with holes in the middle of the slice on about half of them. The last known delay is carried until an explicit entry supersedes it, and those calls are flagged `isPropagated` so the interface can present them as estimates rather than first-hand predictions. A skipped call does not propagate.
+- **Services added on the day are reconstructed from the realtime feed alone.** They have no timetable entry, so their advertised time is treated as their scheduled time and no delay is reported against them.
 - **Trip planning is not implemented.** The destination field filters departures; it does not search journeys, interchanges, or other modes.
 - **Live data requires configured credentials and a successful refresh.** When no live artifact is available, the interface falls back to genuine scheduled times from the shipped timetable, clearly labelled as timetable-only. No synthetic services are ever displayed.
 - **The PWA does not provide offline service data.**
