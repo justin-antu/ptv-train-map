@@ -6,7 +6,6 @@ import { BorderBeam } from "../ui/border-beam";
 import { NETWORK_SUBTITLE } from "../../config";
 import type { LiveRun, NetworkStaticData, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
-import type { DeparturePreferencesController } from "../../hooks/useDeparturePreferences";
 
 interface NetworkSectionProps {
   staticData: NetworkStaticData;
@@ -17,7 +16,6 @@ interface NetworkSectionProps {
   /** Lines drawn on the map: the commuter's favourites, or all of them. */
   visibleLineIds: Set<string>;
   selection: Selection;
-  preferences: DeparturePreferencesController;
   trainsRunning: number;
   linesActive: number;
   onStationSelect: (stationId: string) => void;
@@ -38,7 +36,6 @@ export function NetworkSection({
   runs,
   visibleLineIds,
   selection,
-  preferences,
   trainsRunning,
   linesActive,
   onStationSelect,
@@ -91,7 +88,6 @@ export function NetworkSection({
             lineNameById={lineNameById}
             lineColorById={lineColorById}
             runs={runs}
-            preferences={preferences}
             onClose={onClearSelection}
           />
         </div>

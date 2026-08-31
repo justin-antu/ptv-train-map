@@ -172,7 +172,6 @@ export default function App() {
               runs={live.runs}
               visibleLineIds={lineFilter.effectiveLineIds}
               selection={selection}
-              preferences={preferences}
               trainsRunning={trainsRunningNow}
               linesActive={linesActive}
               onStationSelect={handleStationSelect}

@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDownToLine, CalendarDays, ChevronDown, LayoutGrid, 
 import { SearchableSelect, type SelectItem } from "../SearchableSelect";
 import { ScopeChip } from "../ScopeChip";
 import { CountAnnouncer } from "../CountAnnouncer";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useNow } from "../../hooks/useNow";
 import { melbourneDateString, melbourneMinutesOfDay } from "../../shared/melbourneTime";
 import { cn } from "../../lib/utils";
@@ -10,6 +11,8 @@ import type { NetworkTimetableData, TimetableDirection, TimetableService } from 
 import type { TimetableFocus } from "../../shared/timetableFocus";
 
 const STATION_STORAGE_KEY = "wimt:timetableStation";
+/** Matches the breakpoint the layout toggle itself appears at. */
+const GRID_QUERY = "(min-width: 1024px)";
 const ROW_HEIGHT = 44;
 const OVERSCAN = 8;
 
@@ -58,7 +61,13 @@ export const LineTimetable = memo(function LineTimetable({
   const [directionId, setDirectionId] = useState("");
   const [stationId, setStationId] = useState<string | null>(persistedStation);
   const [patternId, setPatternId] = useState<string | null>(null);
-  const [view, setView] = useState<"station" | "matrix">("station");
+  // Null until the reader picks a layout, so the default can follow the screen
+  // without overriding them afterwards. The grid is only the default where the
+  // toggle exists to escape it: below `lg` there is no control, and a
+  // horizontally scrolling table would be the only thing on offer.
+  const [viewChoice, setViewChoice] = useState<"station" | "matrix" | null>(null);
+  const isWide = useMediaQuery(GRID_QUERY);
+  const view = viewChoice ?? (isWide ? "matrix" : "station");
 
   const lineId = scopeLineId ?? localLineId;
   const line = data?.lines.find((candidate) => candidate.id === lineId) ?? data?.lines[0];
@@ -125,7 +134,9 @@ export const LineTimetable = memo(function LineTimetable({
     setDirectionId(focus.directionId);
     setStationId(focus.stationId);
     setPatternId(null);
-    setView("station");
+    // A cross-link is about one station, and the station list is where the
+    // linked service gets highlighted.
+    setViewChoice("station");
     setDate(now.date);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.requestedAt]);
@@ -195,8 +206,8 @@ export const LineTimetable = memo(function LineTimetable({
               That permits a horizontally scrolling table on a wide screen; it
               does not make one a reasonable default on a phone. */}
           <div className="ml-auto hidden items-center gap-1 lg:flex" role="group" aria-label="Timetable layout">
-            <ViewToggle current={view} value="station" onSelect={setView} icon={List} label="By station" />
-            <ViewToggle current={view} value="matrix" onSelect={setView} icon={LayoutGrid} label="Full grid" />
+            <ViewToggle current={view} value="station" onSelect={setViewChoice} icon={List} label="By station" />
+            <ViewToggle current={view} value="matrix" onSelect={setViewChoice} icon={LayoutGrid} label="Full grid" />
           </div>
         </div>
 

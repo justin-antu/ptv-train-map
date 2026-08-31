@@ -1,14 +1,11 @@
-import { Star, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { EtaText } from "../EtaText";
 import { DelayBadge } from "../DelayBadge";
 import { effectiveStopTimeUtc, type LiveRun, type StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
-import type { DeparturePreferencesController } from "../../hooks/useDeparturePreferences";
 import { delayMinutesFor, soonestPerLine, upcomingStopsForStation } from "../../data/departures";
 import { useNow } from "../../hooks/useNow";
-import { cn } from "../../lib/utils";
 
 interface SelectedInfoCardProps {
   selection: Selection;
@@ -16,7 +13,6 @@ interface SelectedInfoCardProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  preferences: DeparturePreferencesController;
   onClose: () => void;
 }
 
@@ -31,7 +27,6 @@ export function SelectedInfoCard({
   lineNameById,
   lineColorById,
   runs,
-  preferences,
   onClose,
 }: SelectedInfoCardProps) {
   const now = useNow(1000);
@@ -48,30 +43,15 @@ export function SelectedInfoCard({
     const station = stationsById.get(selection.stationId);
     if (!station) return null;
     const departures = soonestPerLine(upcomingStopsForStation(station, runs, now));
-    const isOrigin = preferences.originStationId === station.id;
 
     return (
       <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-brand bg-card/80 p-4 shadow-sm backdrop-blur-sm">
         <div className="flex items-start justify-between gap-2">
           <div className="type-heading min-w-0 flex-1 truncate text-base">{station.name}</div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => preferences.setOrigin(isOrigin ? null : station.id)}
-                  className={cn("touch-target text-muted-foreground", isOrigin && "text-warning")}
-                >
-                  <Star className={cn("size-4", isOrigin && "fill-warning text-warning")} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{isOrigin ? "Clear my departure station" : "Depart from this station"}</TooltipContent>
-            </Tooltip>
-            <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target text-muted-foreground">
-              <X className="size-4" />
-            </Button>
-          </div>
+          <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target shrink-0 text-muted-foreground">
+            <X className="size-4" />
+            <span className="sr-only">Close {station.name}</span>
+          </Button>
         </div>
         <div className="mt-0.5 text-2xs text-muted-foreground">Next departures</div>
         <div className="mt-2 space-y-1.5">
@@ -119,6 +99,7 @@ export function SelectedInfoCard({
         </div>
         <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target shrink-0 text-muted-foreground">
           <X className="size-4" />
+          <span className="sr-only">Close {lineName} service</span>
         </Button>
       </div>
       <div className="mt-0.5 text-2xs text-muted-foreground">To {run.destinationName}</div>

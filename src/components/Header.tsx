@@ -4,7 +4,6 @@ import { APP_TITLE, NETWORK_SUBTITLE } from "../config";
 import type { Theme } from "../hooks/useTheme";
 import { cn } from "../lib/utils";
 import { AnimatedThemeToggler } from "./ui/animated-theme-toggler";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { NumberTicker } from "./ui/number-ticker";
 import { TextAnimate } from "./ui/text-animate";
 import { DesktopNav } from "./layout/DesktopNav";
@@ -90,49 +89,26 @@ export const Header = memo(function Header({
 
         <DesktopNav activeSection={activeSection} onNavigate={onNavigate} />
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* The dot is the signal; the sentence lives on the departure board,
-              which is the only place that shows it on a phone. Spelling it out
-              here as well put two differently-worded freshness lines on one
-              desktop screen. */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                className={cn(
-                  "hidden items-center rounded-full border border-border bg-background/60 py-1 sm:flex",
-                  // Overnight there is no count to show, so the pill collapses
-                  // to a status light rather than a mostly empty bubble.
-                  trainCount > 0 ? "gap-2 px-3" : "px-2",
-                )}
-              >
-                <span className={cn("size-1.5 rounded-full", FRESHNESS_DOT_CLASS[freshnessTone])} aria-hidden="true" />
-                <span className="sr-only">{freshnessLabel}</span>
-                {trainCount > 0 && (
-                  <span className="flex items-center gap-1 text-2xs font-semibold text-foreground">
-                    <NumberTicker value={trainCount} className="text-foreground" /> trains
-                  </span>
-                )}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>{freshnessLabel}</TooltipContent>
-          </Tooltip>
-          <AnimatedThemeToggler
-            theme={theme}
-            onThemeChange={onThemeChange}
-            variant="circle"
-            title="Toggle dark mode"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background/60 text-foreground transition-colors hover:bg-accent [&_svg]:size-4"
-          />
-        </div>
+        <AnimatedThemeToggler
+          theme={theme}
+          onThemeChange={onThemeChange}
+          variant="circle"
+          title="Toggle dark mode"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background/60 text-foreground transition-colors hover:bg-accent [&_svg]:size-4"
+        />
       </div>
 
-      {/* The line scope belongs to the app, not to one card. It used to be
-          declared globally but rendered inside the departures board, so people
-          changed it there and were surprised the timetable ignored it. */}
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 pb-2 sm:px-6">
-        <span id="line-scope-label" className="type-label shrink-0 text-muted-foreground">
-          Showing
-        </span>
+      {/*
+        The app-wide state bar: what every section is scoped to on the left, and
+        how much any of it can be trusted on the right.
+
+        Both belong to the app rather than to one card. The line scope used to be
+        declared globally but rendered inside the departures board, so people
+        changed it there and were surprised the timetable ignored it; the
+        freshness line used to sit on the board alone, which implied the map and
+        the alerts were fresher than they were.
+      */}
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pb-2 sm:px-6">
         <SearchableSelect
           items={lineItems}
           value={scopeLineId}
@@ -141,8 +117,25 @@ export const Header = memo(function Header({
           emptyOption="All lines"
           label="Narrow the whole app to one line"
           size="sm"
-          className="w-[11rem]"
+          className="w-[9.5rem] shrink-0 sm:w-[11rem]"
         />
+
+        <div className="ml-auto flex min-w-0 items-center gap-2.5">
+          {trainCount > 0 && (
+            <span className="hidden shrink-0 items-center gap-1 text-2xs font-semibold text-foreground sm:flex">
+              <NumberTicker value={trainCount} className="text-foreground" /> trains
+            </span>
+          )}
+          <p
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-2xs",
+              freshnessTone === "warning" ? "text-warning" : "text-muted-foreground",
+            )}
+          >
+            <span className={cn("size-1.5 shrink-0 rounded-full", FRESHNESS_DOT_CLASS[freshnessTone])} aria-hidden="true" />
+            <span className="truncate">{freshnessLabel}</span>
+          </p>
+        </div>
       </div>
     </header>
   );

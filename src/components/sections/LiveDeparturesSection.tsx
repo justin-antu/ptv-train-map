@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeftRight, Bell, BellOff, RotateCcw } from "lucide-react";
 import { SectionCard } from "../layout/SectionCard";
 import { useSectionNavigation } from "../layout/sectionNavigation";
@@ -67,6 +67,8 @@ export function LiveDeparturesSection({
   const navigate = useSectionNavigation();
   const now = useNow(1000);
   const [expanded, setExpanded] = useState(false);
+  const originFieldId = useId();
+  const destinationFieldId = useId();
 
   const freshness = useMemo(
     () => describeFreshness({ generatedAtUtc: generatedAtUtc ?? "", feedTimestampUtc: feedTimestampUtc ?? undefined, isScheduleOnly }, now),
@@ -164,79 +166,84 @@ export function LiveDeparturesSection({
   const allCancelled = rows.length > 0 && runnable.length === 0;
 
   return (
-    <SectionCard id="departures" title="Departures" description={origin ? `Next services from ${origin.name}` : undefined}>
-      <div className="flex flex-col gap-3">
-        {/* The scope switch: what the board is about. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchableSelect
-            items={stationItems}
-            value={preferences.originStationId}
-            onChange={preferences.setOrigin}
-            placeholder="Choose station"
-            quickPickIds={CBD_QUICK_PICK_STATION_IDS}
-            label="Departing from"
-            className="min-w-0 flex-1 sm:max-w-[16rem]"
-          />
-          <span className="ml-auto flex items-center gap-1.5">
-            <DisruptionIndicators summary={disruptionSummary} lineNameById={lineNameById} onView={() => navigate("alerts")} />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-pressed={notifications.enabled}
-                  onClick={() => void notifications.toggle()}
-                  className={cn("touch-target shrink-0", notifications.enabled ? "text-brand" : "text-muted-foreground")}
-                >
-                  {notifications.enabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
-                  <span className="sr-only">Arrival alerts {notifications.enabled ? "on" : "off"}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {notifications.enabled ? "Arrival alerts on — tap to turn off" : "Notify me ~2 min before a train arrives"}
-              </TooltipContent>
-            </Tooltip>
-            {/* Only offered once there is something to undo: a permanently
-                live destructive control beside the station picker is a trap. */}
-            {!preferences.isDefault && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={preferences.reset}
-                    className="touch-target shrink-0 text-muted-foreground"
-                  >
-                    <RotateCcw className="size-4" />
-                    <span className="sr-only">Reset the board</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Reset the board</TooltipContent>
-              </Tooltip>
-            )}
-          </span>
-        </div>
-
-        {/* The filters over that scope, labelled as what they do. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchableSelect
-            items={stationItems}
-            value={preferences.destinationStationId}
-            onChange={preferences.setDestination}
-            placeholder="Anywhere"
-            emptyOption="Anywhere"
-            label="Only show trains stopping at"
-            size="sm"
-            className="min-w-0 flex-1 sm:max-w-[15rem]"
-          />
+    <SectionCard
+      id="departures"
+      title="Departures"
+      description={origin ? `Next services from ${origin.name}` : undefined}
+      actions={
+        // These act on the board as a whole rather than on any one control in
+        // it, so they belong to the card's own header. Given a row inside the
+        // body they mostly sat there alone, since the alerts toggle is the only
+        // one of the three that is always shown.
+        <div className="flex items-center gap-1">
+          <DisruptionIndicators summary={disruptionSummary} lineNameById={lineNameById} onView={() => navigate("alerts")} />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
+                aria-pressed={notifications.enabled}
+                onClick={() => void notifications.toggle()}
+                className={cn("touch-target shrink-0", notifications.enabled ? "text-brand" : "text-muted-foreground")}
+              >
+                {notifications.enabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+                <span className="sr-only">Arrival alerts {notifications.enabled ? "on" : "off"}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {notifications.enabled ? "Arrival alerts on — tap to turn off" : "Notify me ~2 min before a train arrives"}
+            </TooltipContent>
+          </Tooltip>
+          {/* Only offered once there is something to undo: a permanently live
+              destructive control beside the station picker is a trap. */}
+          {!preferences.isDefault && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={preferences.reset}
+                  className="touch-target shrink-0 text-muted-foreground"
+                >
+                  <RotateCcw className="size-4" />
+                  <span className="sr-only">Reset the board</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reset the board</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {/*
+          Origin and destination sit on one row at one size. They still do
+          different jobs — origin re-bases the board, destination only filters
+          it — but expressing that as two differently sized controls on separate
+          rows read as a rendering fault rather than as a distinction. The
+          visible captions carry the difference instead.
+        */}
+        <div className="flex items-end gap-2">
+          <Field label="Departing from" htmlFor={originFieldId}>
+            <SearchableSelect
+              id={originFieldId}
+              items={stationItems}
+              value={preferences.originStationId}
+              onChange={preferences.setOrigin}
+              placeholder="Choose station"
+              quickPickIds={CBD_QUICK_PICK_STATION_IDS}
+              label="Departing from"
+            />
+          </Field>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
                 aria-disabled={!preferences.destinationStationId}
                 onClick={() => preferences.swap()}
                 className={cn("touch-target shrink-0 text-muted-foreground", !preferences.destinationStationId && "opacity-40")}
@@ -250,46 +257,48 @@ export function LiveDeparturesSection({
             </TooltipContent>
           </Tooltip>
 
-          {selectedLine && (
-            <ScopeChip
-              label={`${selectedLine.name} line`}
-              color={selectedLine.color}
-              count={
-                destinationOnly.length > rows.length
-                  ? `${rows.length} of ${destinationOnly.length} services`
-                  : undefined
-              }
-              onClear={() => preferences.setLine(null)}
+          <Field label="Stopping at" htmlFor={destinationFieldId}>
+            <SearchableSelect
+              id={destinationFieldId}
+              items={stationItems}
+              value={preferences.destinationStationId}
+              onChange={preferences.setDestination}
+              placeholder="Anywhere"
+              emptyOption="Anywhere"
+              quickPickIds={CBD_QUICK_PICK_STATION_IDS}
+              label="Only show trains stopping at"
+              align="end"
             />
-          )}
+          </Field>
         </div>
 
-        {/* A denied permission prompt has to be visible where the toggle is.
-            This used to live inside the settings popover, so the one thing in
-            there worth reading was the one thing nobody would go back to find. */}
+        {/* The header already names the scoped line, so this restates it only
+            for the one thing the header cannot show: how much of the board it
+            is hiding. */}
+        {selectedLine && (
+          <ScopeChip
+            className="self-start"
+            label={`${selectedLine.name} line`}
+            color={selectedLine.color}
+            count={
+              destinationOnly.length > rows.length
+                ? `${rows.length} of ${destinationOnly.length} services`
+                : undefined
+            }
+            onClear={() => preferences.setLine(null)}
+          />
+        )}
+
+        {/* A denied permission prompt has to be visible without going hunting
+            for it, so it sits at the top of the body rather than behind the
+            toggle that caused it. */}
         {notifications.message && <p className="text-2xs text-destructive">{notifications.message}</p>}
 
         <CountAnnouncer message={announcement} />
 
-        {/* The card's own description already names the origin, and the two
-            selects show the filters, so this line reports only what none of
-            them can: how much the times on screen can be trusted. */}
-        <p
-          className={cn(
-            "flex items-center gap-1.5 text-2xs",
-            freshness.tone === "warning" ? "text-warning" : "text-muted-foreground",
-          )}
-        >
-          <span
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              freshness.tone === "success" ? "bg-success" : freshness.tone === "warning" ? "bg-warning" : "bg-muted-foreground",
-            )}
-            aria-hidden="true"
-          />
-          {freshness.label}
-        </p>
-
+        {/* The status line itself now lives in the masthead, because it is true
+            of the map and the alerts too. What stays here is the consequence,
+            which is only actionable next to the times it applies to. */}
         {freshness.detail && (
           <p className="flex items-start gap-2.5 rounded-lg border border-warning-border/60 bg-warning-surface px-3 py-2.5 text-xs text-warning-foreground">
             <AlertTriangle className="mt-px size-4 shrink-0" aria-hidden="true" />
@@ -338,6 +347,24 @@ export function LiveDeparturesSection({
         )}
       </div>
     </SectionCard>
+  );
+}
+
+/**
+ * A caption above one of the two station pickers.
+ *
+ * The pickers are deliberately identical in size, so without a visible caption
+ * the pair reads as the From/To of a journey planner. The caption is what says
+ * the second one only filters what the first one produced.
+ */
+function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <label htmlFor={htmlFor} className="type-label truncate text-muted-foreground">
+        {label}
+      </label>
+      {children}
+    </div>
   );
 }
 
