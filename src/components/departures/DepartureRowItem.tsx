@@ -137,7 +137,13 @@ export const DepartureRowItem = memo(function DepartureRowItem({
                 <EtaText timeUtc={row.timeUtc} now={now} className="text-base font-semibold" />
               </span>
               {row.platform && (
-                <span className="type-numeric rounded bg-secondary px-1.5 py-0.5 text-3xs font-semibold tracking-wide">
+                // Borrows the line colour so the platform reads as belonging to
+                // the service in the row rather than to the board. Decorative
+                // only: the line is named in full beside the destination.
+                <span
+                  className="type-numeric rounded border bg-secondary px-1.5 py-0.5 text-3xs font-semibold tracking-wide"
+                  style={{ borderColor: lineColor }}
+                >
                   PLAT {row.platform}
                 </span>
               )}

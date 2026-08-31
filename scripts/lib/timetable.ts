@@ -41,6 +41,8 @@ export interface GtfsStopRecord {
   lon: number;
   locationType: string;
   parentStation: string;
+  /** GTFS `platform_code`, e.g. "3". Absent on stations and on stops that declare none. */
+  platformCode?: string;
 }
 
 export interface CanonicalStation {
@@ -213,6 +215,33 @@ export function selectCanonicalStopTimes(
 }
 
 /**
+ * The scheduled platform at each canonical station, keyed the same way as
+ * `selectCanonicalStopTimes` so the two line up column for column.
+ *
+ * Canonicalisation is what loses the platform in the first place: it folds
+ * every platform-level GTFS stop back into one station, which is right for a
+ * timetable column but discards the one field a rider on the concourse needs.
+ */
+export function selectCanonicalStopPlatforms(
+  stops: RawStopTime[],
+  canonicalByStop: Map<string, CanonicalStation>,
+  platformByStopId: Map<string, string>,
+): Map<string, string> {
+  const selected = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const stop of [...stops].sort((a, b) => a.sequence - b.sequence || a.stopId.localeCompare(b.stopId))) {
+    const key = canonicalByStop.get(stop.stopId)?.key;
+    if (!key || seen.has(key)) continue;
+    // Claim the column on the first call even when that call names no platform,
+    // so a later re-visit cannot attach its platform to the earlier time.
+    seen.add(key);
+    const platform = platformByStopId.get(stop.stopId);
+    if (platform) selected.set(key, platform);
+  }
+  return selected;
+}
+
+/**
  * Produces a deterministic station union that preserves every observed adjacent
  * ordering where possible. Branch-only stations settle by average normalized
  * position and name, so input-file ordering cannot scramble columns.
@@ -302,9 +331,13 @@ async function loadGtfs(gtfsDir: string, dates: string[]) {
       lon: Number(row.stop_lon),
       locationType: row.location_type,
       parentStation: row.parent_station,
+      platformCode: row.platform_code || undefined,
     });
   });
   const canonicalByStop = canonicalizeGtfsStops(stopRecords);
+  const platformByStopId = new Map(
+    stopRecords.filter((record) => record.platformCode).map((record) => [record.id, record.platformCode!]),
+  );
 
   const calendars = new Map<string, CalendarRule>();
   const calendarPath = path.join(gtfsDir, "calendar.txt");
@@ -365,7 +398,7 @@ async function loadGtfs(gtfsDir: string, dates: string[]) {
     stopTimes.set(row.trip_id, values);
   });
 
-  return { routesById, canonicalByStop, trips, stopTimes };
+  return { routesById, canonicalByStop, platformByStopId, trips, stopTimes };
 }
 
 /** Stations that only appear on City Loop workings. */
@@ -441,6 +474,7 @@ function buildDirection(
   routeTrips: TripInfo[],
   stopTimes: Map<string, RawStopTime[]>,
   canonicalByStop: Map<string, CanonicalStation>,
+  platformByStopId: Map<string, string>,
   dates: string[],
 ): TimetableDirection | null {
   const usable = routeTrips
@@ -477,6 +511,10 @@ function buildDirection(
     stationByKey,
   );
 
+  // Distinct platform rows, shared across every service that uses them.
+  const platformSets: (string | null)[][] = [];
+  const platformSetBySignature = new Map<string, number>();
+
   const services: TimetableService[] = [];
   for (const { trip, stops } of usable) {
     const service: TimetableService = {
@@ -491,6 +529,25 @@ function buildDirection(
       const column = columnByStation.get(key);
       if (column !== undefined) service.times[column] = minutes;
     }
+
+    const platforms = Array<string | null>(stationKeys.length).fill(null);
+    let anyPlatform = false;
+    for (const [key, platform] of selectCanonicalStopPlatforms(stops, canonicalByStop, platformByStopId)) {
+      const column = columnByStation.get(key);
+      if (column === undefined) continue;
+      platforms[column] = platform;
+      anyPlatform = true;
+    }
+    if (anyPlatform) {
+      const signature = platforms.join("|");
+      let index = platformSetBySignature.get(signature);
+      if (index === undefined) {
+        index = platformSets.push(platforms) - 1;
+        platformSetBySignature.set(signature, index);
+      }
+      service.platformSet = index;
+    }
+
     services.push(service);
   }
 
@@ -504,7 +561,7 @@ function buildDirection(
     ? `Towards ${endpoints[0][0]}`
     : `Towards ${endpoints.slice(0, 2).map(([name]) => name).join(" / ")}`;
 
-  return {
+  const direction: TimetableDirection = {
     id: directionId,
     label,
     stationIds: stationKeys.map((key) => stationByKey.get(key)?.id ?? lineIdFromName(key)),
@@ -512,6 +569,8 @@ function buildDirection(
     patterns,
     services,
   };
+  if (platformSets.length > 0) direction.platformSets = platformSets;
+  return direction;
 }
 
 export function validateTimetable(data: NetworkTimetableData): void {
@@ -547,6 +606,14 @@ export function validateTimetable(data: NetworkTimetableData): void {
         if (service.times.some((time) => time !== null && (!Number.isFinite(time) || time < 0))) {
           throw new Error(`${line.name} service ${service.id} has an invalid time`);
         }
+        if (service.platformSet !== undefined && !direction.platformSets?.[service.platformSet]) {
+          throw new Error(`${line.name} service ${service.id} references unknown platform set ${service.platformSet}`);
+        }
+      }
+      for (const platforms of direction.platformSets ?? []) {
+        if (platforms.length !== direction.stationIds.length) {
+          throw new Error(`${line.name} direction ${direction.id} has a platform set of the wrong width`);
+        }
       }
     }
   }
@@ -580,7 +647,7 @@ export function auditTimetableStationDuplicates(data: NetworkTimetableData): {
 export async function generateTimetable(options: GenerateTimetableOptions): Promise<NetworkTimetableData> {
   const generatedAt = options.generatedAt ?? new Date();
   const warnings: string[] = [];
-  const { routesById, canonicalByStop, trips, stopTimes } = await loadGtfs(options.gtfsDir, options.dates);
+  const { routesById, canonicalByStop, platformByStopId, trips, stopTimes } = await loadGtfs(options.gtfsDir, options.dates);
   let ptvRouteMetadata: "verified" | "not-verified" = "not-verified";
   let ptvVerifiedAtUtc: string | null = null;
 
@@ -615,6 +682,7 @@ export async function generateTimetable(options: GenerateTimetableOptions): Prom
         routeTrips.filter((trip) => trip.directionId === directionId),
         stopTimes,
         canonicalByStop,
+        platformByStopId,
         options.dates,
       ))
       .filter((direction): direction is TimetableDirection => direction !== null);

@@ -80,7 +80,7 @@ interface ScheduledTrip {
   destination: string;
   /** Bit N set means the service runs on `availableDates[N]`. */
   dateMask: number;
-  calls: { stationId: string; minutes: number }[];
+  calls: { stationId: string; minutes: number; platform?: string }[];
 }
 
 interface ScheduleIndex {
@@ -98,10 +98,16 @@ function buildScheduleIndex(timetable: NetworkTimetableData): ScheduleIndex {
     for (const direction of line.directions) {
       const directionId = Number(direction.id);
       for (const service of direction.services) {
+        const platforms = service.platformSet !== undefined
+          ? direction.platformSets?.[service.platformSet]
+          : undefined;
         const calls: ScheduledTrip["calls"] = [];
         service.times.forEach((minutes, column) => {
           if (minutes === null) return;
-          calls.push({ stationId: direction.stationIds[column], minutes });
+          const call: ScheduledTrip["calls"][number] = { stationId: direction.stationIds[column], minutes };
+          const platform = platforms?.[column];
+          if (platform) call.platform = platform;
+          calls.push(call);
         });
         if (calls.length < 2) continue;
         calls.sort((a, b) => a.minutes - b.minutes);
@@ -242,6 +248,10 @@ function buildRun(
       stationId: call.stationId,
       scheduledTimeUtc: scheduled.toISOString(),
     };
+    // The scheduled platform is the floor. Metro's trip updates only cover a
+    // slice of each trip, so without this every call outside that slice showed
+    // no platform at all — which on a suburban board was most of them.
+    if (call.platform) stop.platform = call.platform;
 
     const prediction = predictions.get(call.stationId);
 
@@ -256,6 +266,8 @@ function buildRun(
       return stop;
     }
 
+    // Overrides the scheduled platform set above: a late change of platform is
+    // exactly the case the realtime feed exists to report.
     if (prediction.platform) stop.platform = prediction.platform;
 
     if (prediction.isSkipped) {

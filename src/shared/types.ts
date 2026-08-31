@@ -202,6 +202,11 @@ export interface TimetableService {
   patternId: string;
   /** One value per direction.stationIds entry; null means this service skips/does not use that station. */
   times: (number | null)[];
+  /**
+   * Index into `TimetableDirection.platformSets`. Absent when the schedule
+   * declares no platform for any of this service's calls.
+   */
+  platformSet?: number;
 }
 
 /**
@@ -230,6 +235,16 @@ export interface TimetableDirection {
   patterns: TimetablePattern[];
   /** Services are stored once and selected by dateMask to avoid repeating weekday schedules. */
   services: TimetableService[];
+  /**
+   * Distinct scheduled-platform rows, each aligned to `stationIds` exactly as
+   * `TimetableService.times` is, with null where the schedule names no platform.
+   *
+   * Shared rather than stored per service because platform assignment is far
+   * less varied than timing: the whole network resolves to a few hundred
+   * distinct rows across twelve thousand services, so giving each service its
+   * own copy would cost roughly a megabyte to say the same thing.
+   */
+  platformSets?: (string | null)[][];
 }
 
 export interface TimetableLine {

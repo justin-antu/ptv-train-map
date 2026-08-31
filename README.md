@@ -36,13 +36,15 @@ The Vite frontend is a fully static React and TypeScript site. GitHub Actions re
 
 `public/data/network-static.json` contains the 16 lines, official colours, canonical station sequences, station coordinates, and route polylines. `scripts/generate-static-data.ts` creates the artifact from the Victorian GTFS Schedule feed.
 
-Shared stations are deduplicated by normalized name, and platform-level GTFS stop ids are carried through as `gtfsStops` so departures can show a scheduled platform.
+Shared stations are deduplicated by normalized name, and platform-level GTFS stop ids are carried through as `gtfsStops` so the realtime feed's stop entries resolve to a station and a platform.
 
 Station sets and route geometry are derived separately. A line's `stationIds` is the union of every trip on the route, which is why Flagstaff, Melbourne Central and Parliament exist; its `polyline` still comes from one canonical direct alignment, so the map draws a single legible track per line. Stations that sit off that alignment are marked `offCanonicalAlignment`. The Metro Tunnel corridor remains the canonical alignment for the Sunbury, Cranbourne, and Pakenham lines.
 
 ### Daily timetable data
 
 `public/data/network-timetable.json` contains complete scheduled service matrices for eight Melbourne calendar dates. `scripts/generate-timetable.ts` derives trip patterns, service calendars, branch variants, stop times, and times beyond 24:00 from GTFS.
+
+Scheduled platforms travel alongside the times, but indirectly. Canonicalisation folds every platform-level GTFS stop back into one station, which is right for a timetable column and wrong for a rider on the concourse, so each direction also carries a `platformSets` table of distinct platform rows and each service stores an index into it. Platform assignment varies far less than timing — 12,259 services resolve to 566 distinct rows — so sharing them costs a quarter of the megabyte that a per-service copy would.
 
 When PTV credentials are available, one PTV `/routes` request validates the in-scope route names. Complete timetable generation remains GTFS-based because PTV requires a separate stopping-pattern request for each run.
 
@@ -80,7 +82,7 @@ Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeToke
 - **Delay values are prediction-based.** A `+N min` value is the difference between a stop's scheduled and current predicted departure time. A stop with no published prediction shows no delay rather than assuming it is on time.
 - **Timetable cells are scheduled, not real-time.** A departure row links to its service in the timetable, but live estimates are not merged into timetable cells.
 - **Disruptions are associated with lines.** A line alert may not affect every station or service on that line. Severity comes from PTV's own `display_on_board` flag and severity colour rather than from the wording of the title. Notices that PTV publishes once per affected line are merged into a single incident.
-- **Platform numbers come from the realtime feed, not the timetable.** Every stop entry on a timetabled trip names a platform-level GTFS stop id, which resolves to a `platform_code` through the `gtfsStops` index. Trip updates reach roughly an hour ahead of departure, so services further out than that — and every service in a schedule-only snapshot — show no platform rather than a guessed one.
+- **Platform numbers are scheduled unless the realtime feed says otherwise.** The timetable carries the GTFS `platform_code` for every call, and a realtime stop entry overrides it when one is published, because a late platform change is exactly what that feed exists to report. Trip updates only cover a slice of each trip, so before the schedule was carried through, a suburban board showed a platform on as few as one row in four; it is now about 98% of upcoming calls. The rest are services added on the day, which have no scheduled platform to fall back on.
 - **Delay is carried forward across gaps in the realtime feed.** Metro publishes a partial slice of each trip, with holes in the middle of the slice on about half of them. The last known delay is carried until an explicit entry supersedes it, and those calls are flagged `isPropagated` so the interface can present them as estimates rather than first-hand predictions. A skipped call does not propagate.
 - **Services added on the day are reconstructed from the realtime feed alone.** They have no timetable entry, so their advertised time is treated as their scheduled time and no delay is reported against them.
 - **Trip planning is not implemented.** The destination field filters departures; it does not search journeys, interchanges, or other modes.
