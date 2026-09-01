@@ -1,4 +1,4 @@
-import { LIVE_DATA_STALE_AFTER_MS } from "../config";
+import { LIVE_DATA_DEAD_AFTER_MS, LIVE_DATA_STALE_AFTER_MS } from "../config";
 import type { LiveSnapshot } from "../shared/types";
 
 /**
@@ -20,7 +20,7 @@ export interface Freshness {
    * is left to the masthead's status dot.
    */
   detail?: string;
-  tone: "success" | "muted" | "warning";
+  tone: "success" | "muted" | "warning" | "destructive";
 }
 
 /** Below this the feed is effectively current; the workflow republishes every five minutes. */
@@ -34,15 +34,6 @@ export function describeFreshness(
     return { level: "waiting", label: "Waiting for live data…", tone: "muted" };
   }
 
-  if (snapshot.isScheduleOnly) {
-    return {
-      level: "schedule-only",
-      label: "Timetable only",
-      detail: "Scheduled times — delays and cancellations are not shown.",
-      tone: "warning",
-    };
-  }
-
   // The feed header is when the *predictions* were made. `generatedAtUtc` only
   // says when this file was written, which stays recent even if the upstream
   // feed froze an hour ago.
@@ -51,23 +42,40 @@ export function describeFreshness(
     return { level: "waiting", label: "Waiting for live data…", tone: "muted" };
   }
 
+  const dead = now - measuredAt > LIVE_DATA_DEAD_AFTER_MS;
+
+  if (snapshot.isScheduleOnly) {
+    return {
+      level: "schedule-only",
+      label: "Timetable only",
+      detail: "Scheduled times — delays and cancellations are not shown.",
+      tone: dead ? "destructive" : "success",
+    };
+  }
+
   const ageMs = now - measuredAt;
   const clock = new Date(measuredAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-  // No `detail`, deliberately. A banner telling the rider to go and check
-  // another app was a heavy response to what is usually a couple of missed
-  // refresh runs, and it read as though the app were broken. The amber dot in
-  // the masthead carries the same fact in the label below without the alarm.
+  // The header dot is green unless the feed has been silent for a day. Missed
+  // four-minute refreshes are normal; a 24-hour gap is the one that is broken.
+  if (ageMs > LIVE_DATA_DEAD_AFTER_MS) {
+    return {
+      level: "stale",
+      label: `No live refresh since ${clock}`,
+      tone: "destructive",
+    };
+  }
+
   if (ageMs > LIVE_DATA_STALE_AFTER_MS) {
     return {
       level: "stale",
       label: `Live updates paused since ${clock}`,
-      tone: "warning",
+      tone: "success",
     };
   }
 
   if (ageMs > AGING_AFTER_MS) {
-    return { level: "aging", label: `Updated ${Math.round(ageMs / 60_000)} min ago`, tone: "muted" };
+    return { level: "aging", label: `Updated ${Math.round(ageMs / 60_000)} min ago`, tone: "success" };
   }
 
   return { level: "live", label: "Live · updated just now", tone: "success" };

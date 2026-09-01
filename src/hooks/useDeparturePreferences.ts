@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DEFAULT_ORIGIN_STATION_ID } from "../shared/commute";
 
 const ORIGIN_KEY = "wimt:originStation";
 const DESTINATION_KEY = "wimt:destinationStation";
@@ -122,7 +121,7 @@ function loadPreferences(): DeparturePreferences {
   // Most trips in this network touch Flinders Street, so an untouched install
   // still shows a useful board.
   return {
-    originStationId: originStationId ?? DEFAULT_ORIGIN_STATION_ID,
+    originStationId,
     destinationStationId,
     lineId,
   };
@@ -197,11 +196,11 @@ export function useDeparturePreferences(): DeparturePreferencesController {
   );
 
   const reset = useCallback(
-    () => mutate(() => ({ originStationId: DEFAULT_ORIGIN_STATION_ID, destinationStationId: null, lineId: null })),
+    () => mutate(() => ({ originStationId: null, destinationStationId: null, lineId: null })),
     [mutate],
   );
 
-  const isDefault = preferences.originStationId === DEFAULT_ORIGIN_STATION_ID
+  const isDefault = !preferences.originStationId
     && !preferences.destinationStationId
     && !preferences.lineId;
 

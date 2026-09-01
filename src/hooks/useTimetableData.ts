@@ -17,11 +17,16 @@ function isTimetableData(value: unknown): value is NetworkTimetableData {
     && Array.isArray(data.lines);
 }
 
-export function useTimetableData(): TimetableDataState {
-  const [state, setState] = useState<TimetableDataState>({ data: null, error: null, loading: true });
+export function useTimetableData(enabled = true): TimetableDataState {
+  const [state, setState] = useState<TimetableDataState>({ data: null, error: null, loading: enabled });
 
   useEffect(() => {
+    if (!enabled) {
+      setState((prev) => (prev.data || prev.error ? prev : { data: null, error: null, loading: false }));
+      return;
+    }
     let cancelled = false;
+    setState((prev) => (prev.data ? prev : { data: null, error: null, loading: true }));
     fetch(TIMETABLE_DATA_URL)
       .then(async (response) => {
         if (!response.ok) throw new Error(`Timetable unavailable (${response.status})`);
@@ -38,7 +43,7 @@ export function useTimetableData(): TimetableDataState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   return state;
 }

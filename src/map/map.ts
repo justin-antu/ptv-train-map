@@ -18,17 +18,16 @@ const TILE_KEY_PARAM = import.meta.env.VITE_CARTO_BASEMAP_KEY ? `?key=${import.m
  * `map.setStyle()` prevents custom source and layer teardown during theme
  * changes and eliminates a full map reload.
  */
-function buildPositronStyle(): StyleSpecification {
-  const sourceId = "carto-light_all";
+function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification {
+  const sourceId = `carto-${variant}`;
   return {
     version: 8,
     glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
     sources: {
       [sourceId]: {
         type: "raster",
-        // CARTO distributes tile requests across four subdomains.
         tiles: ["a", "b", "c", "d"].map(
-          (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png${TILE_KEY_PARAM}`,
+          (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png${TILE_KEY_PARAM}`,
         ),
         tileSize: 256,
         attribution:
@@ -37,7 +36,7 @@ function buildPositronStyle(): StyleSpecification {
     },
     layers: [
       {
-        id: "carto-light_all-tiles",
+        id: `${sourceId}-tiles`,
         type: "raster",
         source: sourceId,
         minzoom: 0,
@@ -47,7 +46,15 @@ function buildPositronStyle(): StyleSpecification {
   };
 }
 
-const POSITRON_STYLE = buildPositronStyle();
+const POSITRON_STYLE = buildCartoStyle("light_all");
+const DARK_MATTER_STYLE = buildCartoStyle("dark_all");
+const STATION_PAINT_DARK = {
+  circleFill: "#111318",
+  circleStroke: "#f4f1ea",
+  lineCasing: "#111318",
+  textColor: "#f4f1ea",
+  textHalo: "#111318",
+};
 
 const LINES_SOURCE_ID = "network-lines";
 const STATIONS_SOURCE_ID = "network-stations";
@@ -78,11 +85,15 @@ function computeBounds(staticData: NetworkStaticData): maplibregl.LngLatBoundsLi
   ];
 }
 
-/** Creates the map, permanently on the Positron basemap. Called exactly once per `MapView` mount. */
-export function createMap(container: HTMLElement, staticData: NetworkStaticData): maplibregl.Map {
+/** Creates the map. Dark UI uses CARTO Dark Matter so the map matches the night platform. */
+export function createMap(
+  container: HTMLElement,
+  staticData: NetworkStaticData,
+  theme: "light" | "dark" = "light",
+): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
-    style: POSITRON_STYLE,
+    style: theme === "dark" ? DARK_MATTER_STYLE : POSITRON_STYLE,
     bounds: computeBounds(staticData),
     fitBoundsOptions: { padding: 32 },
     attributionControl: { compact: true },
@@ -102,16 +113,23 @@ export function createMap(container: HTMLElement, staticData: NetworkStaticData)
  * Shared corridors are rendered as overlapping colour-coded lines rather than
  * merged track infrastructure.
  */
-export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
+export function addLineAndStations(
+  map: maplibregl.Map,
+  staticData: NetworkStaticData,
+  theme: "light" | "dark" = "light",
+): void {
   if (map.isStyleLoaded()) {
-    drawLinesAndStations(map, staticData);
+    drawLinesAndStations(map, staticData, theme);
   } else {
-    // The fixed map style emits one load event per map instance.
-    map.on("load", () => drawLinesAndStations(map, staticData));
+    map.on("load", () => drawLinesAndStations(map, staticData, theme));
   }
 }
 
-function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
+function drawLinesAndStations(
+  map: maplibregl.Map,
+  staticData: NetworkStaticData,
+  theme: "light" | "dark" = "light",
+): void {
   if (map.getSource(LINES_SOURCE_ID)) return; // Prevent duplicate sources during re-entrant calls.
 
   map.addSource(LINES_SOURCE_ID, {
@@ -130,7 +148,11 @@ function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData
     type: "line",
     source: LINES_SOURCE_ID,
     layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": STATION_PAINT.lineCasing, "line-width": 6, "line-opacity": 0.85 },
+    paint: {
+      "line-color": theme === "dark" ? STATION_PAINT_DARK.lineCasing : STATION_PAINT.lineCasing,
+      "line-width": 6,
+      "line-opacity": 0.85,
+    },
   });
   map.addLayer({
     id: LINE_LAYER_ID,
@@ -158,8 +180,8 @@ function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData
     paint: {
       // Interchange stations use a larger marker.
       "circle-radius": ["case", [">", ["get", "lineCount"], 1], 5.5, 4],
-      "circle-color": STATION_PAINT.circleFill,
-      "circle-stroke-color": STATION_PAINT.circleStroke,
+      "circle-color": theme === "dark" ? STATION_PAINT_DARK.circleFill : STATION_PAINT.circleFill,
+      "circle-stroke-color": theme === "dark" ? STATION_PAINT_DARK.circleStroke : STATION_PAINT.circleStroke,
       "circle-stroke-width": 1.5,
     },
   });
@@ -177,8 +199,8 @@ function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData
       "text-optional": true,
     },
     paint: {
-      "text-color": STATION_PAINT.textColor,
-      "text-halo-color": STATION_PAINT.textHalo,
+      "text-color": theme === "dark" ? STATION_PAINT_DARK.textColor : STATION_PAINT.textColor,
+      "text-halo-color": theme === "dark" ? STATION_PAINT_DARK.textHalo : STATION_PAINT.textHalo,
       "text-halo-width": 1.4,
     },
   });

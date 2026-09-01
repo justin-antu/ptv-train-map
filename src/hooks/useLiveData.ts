@@ -15,6 +15,8 @@ export interface LiveDataState {
    * snapshot was still downloading.
    */
   isInitialising: boolean;
+  /** True after the first live fetch missed, so the 3MB timetable can load as fallback. */
+  needsScheduleFallback: boolean;
   /** True when every run carries timetable times only, with no real-time layer. */
   isScheduleOnly: boolean;
   generatedAtUtc: string | null;
@@ -36,12 +38,26 @@ export interface LiveDataState {
  */
 export function useLiveData(timetable: NetworkTimetableData | null): LiveDataState {
   const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null);
+  const [liveResolved, setLiveResolved] = useState(false);
 
-  useEffect(() => pollLiveData(LIVE_POLL_INTERVAL_MS, setSnapshot), []);
+  useEffect(() => {
+    const stop = pollLiveData(LIVE_POLL_INTERVAL_MS, (next) => {
+      setSnapshot(next);
+      setLiveResolved(true);
+    });
+    // pollLiveData only reports successes. If the snapshot is missing, still
+    // allow the timetable fallback after a short wait.
+    const missed = window.setTimeout(() => setLiveResolved(true), 4_000);
+    return () => {
+      stop();
+      window.clearTimeout(missed);
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     const next = await loadLiveSnapshot();
     if (next) setSnapshot(next);
+    setLiveResolved(true);
   }, []);
 
   const fallback = useMemo(
@@ -54,12 +70,13 @@ export function useLiveData(timetable: NetworkTimetableData | null): LiveDataSta
     () => ({
       runs: effective?.runs ?? [],
       isInitialising: effective === null,
+      needsScheduleFallback: liveResolved && snapshot === null,
       isScheduleOnly: effective?.isScheduleOnly === true,
       generatedAtUtc: effective?.generatedAtUtc ?? null,
       feedTimestampUtc: effective?.feedTimestampUtc ?? null,
       disruptionsByLine: effective?.disruptionsByLine ?? {},
       refresh,
     }),
-    [effective, refresh],
+    [effective, refresh, liveResolved, snapshot],
   );
 }

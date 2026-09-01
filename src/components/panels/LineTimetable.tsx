@@ -60,7 +60,6 @@ export const LineTimetable = memo(function LineTimetable({
   const [date, setDate] = useState("");
   const [directionId, setDirectionId] = useState("");
   const [stationId, setStationId] = useState<string | null>(persistedStation);
-  const [patternId, setPatternId] = useState<string | null>(null);
   // Null until the reader picks a layout, so the default can follow the screen
   // without overriding them afterwards. The grid is only the default where the
   // toggle exists to escape it: below `lg` there is no control, and a
@@ -78,19 +77,6 @@ export const LineTimetable = memo(function LineTimetable({
     () => (dateIndex < 0 ? [] : (direction?.services ?? []).filter((service) => (service.dateMask & (1 << dateIndex)) !== 0)),
     [dateIndex, direction],
   );
-
-  // Only patterns that actually run on the chosen date are offered: a variant
-  // that exists but has no services today is a dead end.
-  const patterns = useMemo(() => {
-    if (!direction) return [];
-    const counts = new Map<string, number>();
-    for (const service of services) counts.set(service.patternId, (counts.get(service.patternId) ?? 0) + 1);
-    return direction.patterns
-      .filter((pattern) => counts.has(pattern.id))
-      .map((pattern) => ({ ...pattern, serviceCount: counts.get(pattern.id)! }));
-  }, [direction, services]);
-
-  const activePattern = patterns.find((pattern) => pattern.id === patternId) ?? null;
 
   useEffect(() => {
     if (!data || data.lines.length === 0) return;
@@ -114,10 +100,6 @@ export const LineTimetable = memo(function LineTimetable({
     }
   }, [direction, stationId]);
 
-  useEffect(() => {
-    if (patternId && !patterns.some((pattern) => pattern.id === patternId)) setPatternId(null);
-  }, [patterns, patternId]);
-
   const chooseStation = useCallback((nextId: string | null) => {
     setStationId(nextId);
     try {
@@ -133,7 +115,6 @@ export const LineTimetable = memo(function LineTimetable({
     if (!scopeLineId) setLocalLineId(focus.lineId);
     setDirectionId(focus.directionId);
     setStationId(focus.stationId);
-    setPatternId(null);
     // A cross-link is about one station, and the station list is where the
     // linked service gets highlighted.
     setViewChoice("station");
@@ -253,18 +234,15 @@ export const LineTimetable = memo(function LineTimetable({
         </div>
 
         {view === "station" && direction && (
-          <div className="flex flex-wrap items-center gap-2">
-            <SearchableSelect
-              items={stationItems}
-              value={stationId}
-              onChange={chooseStation}
-              placeholder="Choose a station"
-              label="Station"
-              size="sm"
-              className="w-[11rem]"
-            />
-            <PatternPicker patterns={patterns} value={patternId} onChange={setPatternId} />
-          </div>
+          <SearchableSelect
+            items={stationItems}
+            value={stationId}
+            onChange={chooseStation}
+            placeholder="Choose a station"
+            label="Station"
+            size="sm"
+            className="w-full sm:w-[11rem]"
+          />
         )}
 
         {(data.source.partial || stale) && (
@@ -297,17 +275,15 @@ export const LineTimetable = memo(function LineTimetable({
         <MatrixView line={line} direction={direction} services={services} date={date} />
       ) : (
         <StationView
-          key={`${line.id}:${direction.id}:${stationId}:${date}:${patternId ?? "all"}`}
+          key={`${line.id}:${direction.id}:${stationId}:${date}`}
           direction={direction}
           services={services}
           stationId={stationId}
-          patternId={patternId}
           lineName={line.name}
           date={date}
           isToday={date === now.date}
           nowMinute={now.minute}
           focusServiceId={focus?.serviceId ?? null}
-          activePatternLabel={activePattern?.label}
         />
       )}
     </div>
@@ -344,36 +320,6 @@ function ViewToggle({
   );
 }
 
-function PatternPicker({
-  patterns,
-  value,
-  onChange,
-}: {
-  patterns: { id: string; label: string; serviceCount: number }[];
-  value: string | null;
-  onChange: (id: string | null) => void;
-}) {
-  // One pattern means there is nothing to choose between, and a picker with a
-  // single option only suggests the list is broken.
-  if (patterns.length < 2) return null;
-  const items: SelectItem[] = patterns.map((pattern) => ({
-    id: pattern.id,
-    label: `${pattern.label} (${pattern.serviceCount})`,
-  }));
-  return (
-    <SearchableSelect
-      items={items}
-      value={value}
-      onChange={onChange}
-      placeholder="All stopping patterns"
-      emptyOption="All stopping patterns"
-      label="Stopping pattern"
-      size="sm"
-      className="w-[13rem]"
-    />
-  );
-}
-
 interface StationDeparture {
   service: TimetableService;
   minutes: number;
@@ -390,24 +336,20 @@ function StationView({
   direction,
   services,
   stationId,
-  patternId,
   lineName,
   date,
   isToday,
   nowMinute,
   focusServiceId,
-  activePatternLabel,
 }: {
   direction: TimetableDirection;
   services: TimetableService[];
   stationId: string | null;
-  patternId: string | null;
   lineName: string;
   date: string;
   isToday: boolean;
   nowMinute: number;
   focusServiceId: string | null;
-  activePatternLabel?: string;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nowAnchorRef = useRef<HTMLLIElement>(null);
@@ -419,13 +361,12 @@ function StationView({
     if (column < 0) return [];
     const result: StationDeparture[] = [];
     for (const service of services) {
-      if (patternId && service.patternId !== patternId) continue;
       const minutes = service.times[column];
       if (minutes === null) continue;
       result.push({ service, minutes });
     }
     return result.sort((a, b) => a.minutes - b.minutes || a.service.id.localeCompare(b.service.id));
-  }, [services, column, patternId]);
+  }, [services, column]);
 
   /** Index of the first departure at or after now; where the "now" line goes. */
   const nowIndex = useMemo(
@@ -454,11 +395,7 @@ function StationView({
       <PanelMessage
         icon={<TrainFront />}
         title={`No ${lineName} departures from ${stationName}`}
-        detail={
-          activePatternLabel
-            ? `No "${activePatternLabel}" services call here on ${formatDate(date)}. Try all stopping patterns.`
-            : `Nothing is published for ${formatDate(date)} in this direction.`
-        }
+        detail={`Nothing is published for ${formatDate(date)} in this direction.`}
       />
     );
   }
@@ -468,7 +405,7 @@ function StationView({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <CountAnnouncer
-        message={`${departures.length} ${departures.length === 1 ? "departure" : "departures"} from ${stationName}, ${direction.label}, ${formatDate(date)}${activePatternLabel ? `, ${activePatternLabel}` : ""}`}
+        message={`${departures.length} ${departures.length === 1 ? "departure" : "departures"} from ${stationName}, ${direction.label}, ${formatDate(date)}`}
       />
       <div
         ref={scrollerRef}

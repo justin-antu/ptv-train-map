@@ -1,4 +1,4 @@
-import { LIVE_DATA_URL, STATIC_DATA_URL, TIMETABLE_DATA_URL } from "../config";
+import { LIVE_DATA_URL, STATIC_DATA_URL } from "../config";
 import type { LiveSnapshot, NetworkStaticData } from "../shared/types";
 
 export async function loadStaticData(): Promise<NetworkStaticData> {
@@ -36,7 +36,9 @@ export async function warmOfflineCache(): Promise<void> {
     if (!navigator.serviceWorker.controller) return;
   }
 
-  for (const url of [STATIC_DATA_URL, TIMETABLE_DATA_URL]) {
+  // The commute home does not need the 3MB timetable. Warm stations only;
+  // the timetable tab warms its own artifact when first opened.
+  for (const url of [STATIC_DATA_URL]) {
     // `caches.match` searches every cache, so this stays correct regardless of
     // what the Workbox routes in vite.config.ts happen to name theirs.
     if (await caches.match(url)) continue;

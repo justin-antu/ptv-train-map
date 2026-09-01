@@ -1,6 +1,7 @@
 /** Static, non-secret app config. Safe to bundle into the browser build. */
 
 export const APP_TITLE = "Dude, where's my train?";
+export const APP_SHORT_TITLE = "Where's my train?";
 export const NETWORK_SUBTITLE = "Metro Trains Melbourne";
 
 // Vite provides "/" locally and the configured GitHub Pages project path in
@@ -25,6 +26,9 @@ export const LIVE_POLL_INTERVAL_MS = 30_000;
  * fetches before warning that departures may no longer be accurate.
  */
 export const LIVE_DATA_STALE_AFTER_MS = 12 * 60_000;
+
+/** The masthead dot stays green until the feed has been silent this long. */
+export const LIVE_DATA_DEAD_AFTER_MS = 24 * 60 * 60_000;
 
 /**
  * Display grace period after a run's last predicted stop.

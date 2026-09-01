@@ -1,3 +1,6 @@
+import { APP_TITLE } from "../config";
+import { cn } from "../lib/utils";
+
 const REPO_URL = "https://github.com/justin-antu/ptv-train-map";
 
 /** lucide-react dropped brand icons a while back, so the GitHub mark is a tiny inline SVG instead of a dependency. */
@@ -9,46 +12,48 @@ function GithubMark({ className }: { className?: string }) {
   );
 }
 
-export function Footer() {
+export function Footer({ className }: { className?: string }) {
   return (
-    <footer className="relative z-10 border-t border-border bg-card/60 px-4 py-2.5 text-center text-2xs leading-relaxed text-muted-foreground backdrop-blur-sm sm:px-6">
-      {/* Phones get abbreviated labels and no lead-in prose, which keeps the
-          whole credit on one line instead of wrapping to six. */}
-      <p className="mx-auto max-w-4xl">
-        <span className="hidden sm:inline">Live departures & disruptions: </span>
-        <a
-          className="underline underline-offset-2 hover:text-foreground"
-          href="https://www.vic.gov.au/public-transport-timetable-api"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span className="sm:hidden">PTV API</span>
-          <span className="hidden sm:inline">PTV Timetable API</span>
-        </a>{" "}
-        ·<span className="hidden sm:inline"> Station/route data:</span>{" "}
-        <a
-          className="underline underline-offset-2 hover:text-foreground"
-          href="https://opendata.transport.vic.gov.au/dataset/gtfs-schedule"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span className="sm:hidden">GTFS</span>
-          <span className="hidden sm:inline">Victorian GTFS Schedule</span>
-        </a>{" "}
-        {/* No basemap credit here: the map's own compact attribution control
-            already carries CARTO and OpenStreetMap. */}
-        ·{" "}
-        <a
-          className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
-          href={REPO_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <GithubMark className="size-3" />
-          <span className="sm:hidden">Source</span>
-          <span className="hidden sm:inline">Source on GitHub</span>
-        </a>
-      </p>
+    <footer className={cn("bg-card/60 text-2xs leading-relaxed text-muted-foreground backdrop-blur-sm", className)}>
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+        <p className="min-w-0 truncate">{APP_TITLE}</p>
+        <nav aria-label="Credits" className="flex shrink-0 flex-wrap items-center justify-end gap-x-1.5">
+          <a
+            className="underline underline-offset-2 hover:text-foreground"
+            href="https://www.vic.gov.au/public-transport-timetable-api"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span className="sm:hidden">PTV API</span>
+            <span className="hidden sm:inline">PTV Timetable API</span>
+          </a>
+          <span aria-hidden="true">·</span>
+          <a
+            className="underline underline-offset-2 hover:text-foreground"
+            href="https://opendata.transport.vic.gov.au/dataset/gtfs-schedule"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span className="sm:hidden">GTFS</span>
+            <span className="hidden sm:inline">Victorian GTFS Schedule</span>
+          </a>
+          <span aria-hidden="true">·</span>
+          <a className="underline underline-offset-2 hover:text-foreground" href={`${import.meta.env.BASE_URL}privacy.html`}>
+            Privacy
+          </a>
+          <span aria-hidden="true">·</span>
+          <a
+            className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+            href={REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <GithubMark className="size-3" />
+            <span className="sm:hidden">Source</span>
+            <span className="hidden sm:inline">Source on GitHub</span>
+          </a>
+        </nav>
+      </div>
     </footer>
   );
 }

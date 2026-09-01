@@ -19,6 +19,7 @@ interface MapViewProps {
   onStationSelect: (stationId: string) => void;
   onTrainSelect: (pos: TrainPosition) => void;
   onBackgroundClick: () => void;
+  theme?: "light" | "dark";
 }
 
 /**
@@ -36,6 +37,7 @@ export const MapView = memo(function MapView({
   onStationSelect,
   onTrainSelect,
   onBackgroundClick,
+  theme = "light",
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -57,9 +59,9 @@ export const MapView = memo(function MapView({
     const container = containerRef.current;
     if (!container) return;
 
-    const map = createMap(container, staticData);
+    const map = createMap(container, staticData, theme);
     mapRef.current = map;
-    addLineAndStations(map, staticData);
+    addLineAndStations(map, staticData, theme);
     setupStationHoverCursor(map);
 
     const interpolationContext = buildInterpolationContext(staticData);
@@ -100,7 +102,7 @@ export const MapView = memo(function MapView({
       markerLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staticData]);
+  }, [staticData, theme]);
 
   // Sized rather than positioned, deliberately. MapLibre stamps
   // `.maplibregl-map { position: relative }` onto this element, which is the

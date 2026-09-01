@@ -1,8 +1,9 @@
-import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { MapPinned } from "lucide-react";
 import trainLogo from "./assets/train-logo.png";
 import { AppShell } from "./components/layout/AppShell";
-import { LiveDeparturesSection } from "./components/sections/LiveDeparturesSection";
+import { CommuteHome } from "./components/commute/CommuteHome";
+import { FirstRun } from "./components/commute/FirstRun";
 import { TimetableSection } from "./components/sections/TimetableSection";
 import { DisruptionsSection } from "./components/sections/DisruptionsSection";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -10,20 +11,14 @@ import { useTheme } from "./hooks/useTheme";
 import { useStaticData } from "./hooks/useStaticData";
 import { useLiveData } from "./hooks/useLiveData";
 import { useTimetableData } from "./hooks/useTimetableData";
-import { useDeparturePreferences } from "./hooks/useDeparturePreferences";
+import { useCommute } from "./hooks/useCommute";
 import { useFavouriteLineFilter } from "./hooks/useFavouriteLineFilter";
-import { useNotifications } from "./hooks/useNotifications";
 import { aggregateDisruptions, summariseLineDisruptions } from "./data/disruptions";
 import { countActiveRuns } from "./trains/interpolate";
-import { APP_TITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
-import type { DepartureRow } from "./data/departures";
+import { describeFreshness } from "./data/freshness";
+import { APP_SHORT_TITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./config";
 import type { Selection } from "./shared/selection";
-import type { TimetableFocus } from "./shared/timetableFocus";
 
-// MapLibre and the map style are the single largest thing the app ships, and a
-// commuter who only ever checks departures never opens this tab. Lazily loading
-// it keeps that weight out of the first paint; the chunk is still precached in
-// the background by the service worker, so the map works offline too.
 const NetworkSection = lazy(() =>
   import("./components/sections/NetworkSection").then((m) => ({ default: m.NetworkSection })),
 );
@@ -31,32 +26,25 @@ const NetworkSection = lazy(() =>
 export default function App() {
   const [theme, setTheme] = useTheme();
   const { data: staticData, error: staticDataError } = useStaticData();
-  const timetable = useTimetableData();
+  const [timetableEnabled, setTimetableEnabled] = useState(false);
+  const timetable = useTimetableData(timetableEnabled);
   const live = useLiveData(timetable.data);
   const [selection, setSelection] = useState<Selection>(null);
-  const [timetableFocus, setTimetableFocus] = useState<TimetableFocus | null>(null);
+  const [editingCommute, setEditingCommute] = useState(false);
 
   const allLineIds = useMemo(() => staticData?.lines.map((l) => l.id) ?? [], [staticData]);
-  const preferences = useDeparturePreferences();
-  // One chosen line narrows the whole app; no choice means the whole network.
-  const favouriteLineIds = useMemo(() => (preferences.lineId ? [preferences.lineId] : []), [preferences.lineId]);
+  const commute = useCommute();
+  const favouriteLineIds = useMemo(() => (commute.lineId ? [commute.lineId] : []), [commute.lineId]);
   const lineFilter = useFavouriteLineFilter(favouriteLineIds, allLineIds);
 
   const stationsById = useMemo(() => new Map((staticData?.stations ?? []).map((s) => [s.id, s])), [staticData]);
   const lineNameById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.name])), [staticData]);
   const lineColorById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.color])), [staticData]);
-  const lineItems = useMemo(
-    () => (staticData?.lines ?? []).map((line) => ({ id: line.id, label: line.name, color: line.color })),
-    [staticData],
-  );
 
-  // Arrival alerts follow the board's origin, which is the platform the
-  // commuter is actually standing on.
-  const notifyStation = preferences.originStationId ? stationsById.get(preferences.originStationId) : undefined;
-  const notifications = useNotifications(preferences.originStationId, notifyStation, live.runs);
+  useEffect(() => {
+    if (live.needsScheduleFallback) setTimetableEnabled(true);
+  }, [live.needsScheduleFallback]);
 
-  // Count only runs within the active display window. The snapshot also
-  // contains future departures. Recompute once per live-data refresh.
   const trainsRunningNow = useMemo(
     () => countActiveRuns(live.runs, Date.now(), { staleAfterMs: RUN_STALE_AFTER_MS, showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS }),
     [live.runs],
@@ -69,32 +57,36 @@ export default function App() {
 
   const linesActive = useMemo(() => new Set(live.runs.map((run) => run.lineId)).size, [live.runs]);
 
-  /**
-   * Lines worth warning this commuter about: their chosen line, or failing
-   * that, whichever lines serve the stations on their board.
-   */
-  const boardDisruptions = useMemo(() => {
+  const boardLineIds = useMemo(() => {
     const relevant = new Set<string>();
     if (lineFilter.hasPreference) {
       for (const lineId of lineFilter.lineIds) relevant.add(lineId);
     } else {
-      for (const stationId of [preferences.originStationId, preferences.destinationStationId]) {
+      for (const stationId of [commute.originStationId, commute.destinationStationId]) {
         const station = stationId ? stationsById.get(stationId) : undefined;
         for (const lineId of station?.lineIds ?? []) relevant.add(lineId);
       }
     }
-    return summariseLineDisruptions(
-      live.disruptionsByLine,
-      allLineIds.filter((lineId) => relevant.has(lineId)),
+    return allLineIds.filter((lineId) => relevant.has(lineId));
+  }, [lineFilter, commute.originStationId, commute.destinationStationId, stationsById, allLineIds]);
+
+  const boardDisruptions = useMemo(
+    () => summariseLineDisruptions(live.disruptionsByLine, boardLineIds),
+    [live.disruptionsByLine, boardLineIds],
+  );
+
+  const criticalIncident = useMemo(() => {
+    if (boardDisruptions.criticalCount === 0) return null;
+    return (
+      aggregateDisruptions(live.disruptionsByLine, boardLineIds).find((incident) => incident.severity === "critical")
+      ?? null
     );
-  }, [
-    lineFilter,
-    preferences.originStationId,
-    preferences.destinationStationId,
-    stationsById,
-    allLineIds,
-    live.disruptionsByLine,
-  ]);
+  }, [boardDisruptions.criticalCount, live.disruptionsByLine, boardLineIds]);
+
+  const freshness = describeFreshness(
+    { generatedAtUtc: live.generatedAtUtc ?? "", feedTimestampUtc: live.feedTimestampUtc ?? undefined, isScheduleOnly: live.isScheduleOnly },
+    Date.now(),
+  );
 
   const handleStationSelect = useCallback((stationId: string) => {
     setSelection({ kind: "station", stationId });
@@ -105,18 +97,6 @@ export default function App() {
   }, []);
 
   const handleBackgroundClick = useCallback(() => setSelection(null), []);
-
-  // The departures section owns the navigation half of this handoff, because
-  // the section navigation context only exists inside the shell.
-  const openTimetableAt = useCallback((row: DepartureRow) => {
-    setTimetableFocus({
-      lineId: row.lineId,
-      directionId: String(row.directionId),
-      stationId: row.stationId,
-      serviceId: row.runRef,
-      requestedAt: Date.now(),
-    });
-  }, []);
 
   if (staticDataError) {
     return (
@@ -133,10 +113,15 @@ export default function App() {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 text-center">
         <img src={trainLogo} alt="" width={193} height={108} className="h-12 w-auto animate-bounce select-none sm:h-14" />
-        <p className="text-sm text-muted-foreground">Loading {APP_TITLE}…</p>
+        <p className="text-sm text-muted-foreground">Loading {APP_SHORT_TITLE}…</p>
       </div>
     );
   }
+
+  const originName = commute.originStationId ? stationsById.get(commute.originStationId)?.name ?? null : null;
+  const destinationName = commute.destinationStationId
+    ? stationsById.get(commute.destinationStationId)?.name ?? null
+    : null;
 
   return (
     <TooltipProvider>
@@ -150,26 +135,41 @@ export default function App() {
         alertCount={alertCount}
         hasCriticalAlert={boardDisruptions.criticalCount > 0}
         onRefresh={live.refresh}
-        lineItems={lineItems}
-        scopeLineId={preferences.lineId}
-        onScopeLineChange={preferences.setLine}
+        commute={commute}
+        originName={originName}
+        destinationName={destinationName}
+        hideChrome={commute.needsSetup && !editingCommute}
+        onChangeCommute={() => setEditingCommute(true)}
+        onSectionChange={(sectionId) => {
+          if (sectionId === "timetable") setTimetableEnabled(true);
+        }}
         sections={{
-          departures: (
-            <LiveDeparturesSection
-              lines={staticData.lines}
+          home: commute.needsSetup || editingCommute ? (
+            <FirstRun
               stations={staticData.stations}
+              lines={staticData.lines}
+              initialHomeId={commute.homeStationId}
+              initialWorkId={commute.workStationId}
+              onComplete={(homeId, workId) => {
+                commute.setup(homeId, workId);
+                setEditingCommute(false);
+              }}
+              onCancel={editingCommute ? () => setEditingCommute(false) : undefined}
+            />
+          ) : (
+            <CommuteHome
+              lines={staticData.lines}
               stationsById={stationsById}
               runs={live.runs}
               lineNameById={lineNameById}
               lineColorById={lineColorById}
-              preferences={preferences}
-              disruptionSummary={boardDisruptions}
-              notifications={notifications}
+              commute={commute}
+              criticalIncident={criticalIncident}
               isInitialising={live.isInitialising}
-              generatedAtUtc={live.generatedAtUtc}
-              feedTimestampUtc={live.feedTimestampUtc}
               isScheduleOnly={live.isScheduleOnly}
-              onOpenTimetableAt={openTimetableAt}
+              freshnessDetail={freshness.detail}
+              trainsRunning={trainsRunningNow}
+              linesActive={linesActive}
             />
           ),
           network: (
@@ -182,23 +182,22 @@ export default function App() {
                 runs={live.runs}
                 visibleLineIds={lineFilter.effectiveLineIds}
                 selection={selection}
-                trainsRunning={trainsRunningNow}
-                linesActive={linesActive}
                 onStationSelect={handleStationSelect}
                 onTrainSelect={handleTrainSelect}
                 onBackgroundClick={handleBackgroundClick}
                 onClearSelection={handleBackgroundClick}
+                theme={theme}
               />
             </Suspense>
           ),
           timetable: (
             <TimetableSection
               data={timetable.data}
-              loading={timetable.loading}
+              loading={timetable.loading || !timetableEnabled}
               error={timetable.error}
-              scopeLineId={preferences.lineId}
-              onClearScope={() => preferences.setLine(null)}
-              focus={timetableFocus}
+              scopeLineId={commute.lineId}
+              onClearScope={() => commute.setLine(null)}
+              focus={null}
             />
           ),
           alerts: (
@@ -207,8 +206,8 @@ export default function App() {
               lineOrder={allLineIds}
               lineNameById={lineNameById}
               lineColorById={lineColorById}
-              scopeLineId={preferences.lineId}
-              onScopeLineChange={preferences.setLine}
+              scopeLineId={commute.lineId}
+              onScopeLineChange={commute.setLine}
             />
           ),
         }}
@@ -217,16 +216,10 @@ export default function App() {
   );
 }
 
-/**
- * Holds the map card's footprint while its chunk downloads, so nothing below
- * it jumps. Says so in words as well: a bare card in the card colour is
- * indistinguishable from a map that failed to render, which is exactly how it
- * was read on a slow connection.
- */
 function NetworkSectionFallback() {
   return (
     <div
-      className="flex h-[42vh] min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-muted/40 lg:h-[34rem]"
+      className="flex h-[42vh] min-h-[300px] flex-col items-center justify-center gap-3 rounded-sm border border-border bg-muted/40 lg:h-[34rem]"
       role="status"
       aria-label="Loading the network map"
     >

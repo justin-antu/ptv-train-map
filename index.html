@@ -5,12 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
-      content="Melbourne PTV Train Information"
+      content="Your next Metro Trains Melbourne service. Home to work, platform and all."
     />
     <title>Dude, where's my train? — Melbourne train departures</title>
+    <meta property="og:title" content="Dude, where's my train?" />
+    <meta property="og:description" content="Your next Metro Trains Melbourne service. Home to work, platform and all." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
 
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
-    <meta name="theme-color" content="#152c6b" />
+    <meta name="theme-color" content="#f4f1ea" />
     <script>
       (() => {
         let theme = "light";
@@ -25,7 +29,7 @@
         document.documentElement.style.colorScheme = theme;
         document
           .querySelector('meta[name="theme-color"]')
-          ?.setAttribute("content", theme === "dark" ? "#000000" : "#152c6b");
+          ?.setAttribute("content", theme === "dark" ? "#07080c" : "#f4f1ea");
       })();
     </script>
     <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%icons/favicon-32.png" />
@@ -38,6 +42,7 @@
     -->
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Where's my train?" />
+    <link rel="canonical" href="https://justin-antu.github.io/ptv-train-map/" />
   </head>
   <body>
     <div id="root"></div>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, ExternalLink, Info } from "lucide-react";
-import { SectionCard } from "../layout/SectionCard";
+import { BoardBlock } from "../layout/BoardBlock";
 import { CountAnnouncer } from "../CountAnnouncer";
 import { useNow } from "../../hooks/useNow";
 import {
@@ -114,11 +114,11 @@ export function DisruptionsSection({
     );
 
   return (
-    <SectionCard
-      id="alerts"
-      title="Service disruptions"
-      description={description}
-    >
+    <div className="flex flex-col gap-6">
+      <div>
+        <p className="type-label text-muted-foreground">Alerts</p>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </div>
       <CountAnnouncer
         message={
           all.length === 0
@@ -217,7 +217,7 @@ export function DisruptionsSection({
           )}
         </div>
       )}
-    </SectionCard>
+    </div>
   );
 }
 
@@ -240,10 +240,10 @@ function GoodService({
       : "Good service on all lines";
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-success-border/60 bg-success-surface p-4 text-success-foreground">
-      <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
+    <BoardBlock className="flex items-center gap-3 p-5 pl-6 text-success-foreground">
+      <CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden="true" />
       <p className="text-sm font-medium">{message}</p>
-    </div>
+    </BoardBlock>
   );
 }
 
@@ -295,7 +295,11 @@ function DisruptionCard({
   const Icon = styles.icon;
 
   return (
-    <li className="flex flex-col rounded-xl border border-border bg-card/80 p-4 shadow-sm">
+    <li>
+    <BoardBlock
+      accent={lineColorById.get(lineIds[0] ?? "") ?? "hsl(var(--brand))"}
+      className="flex h-full flex-col p-5 pl-6 sm:p-6"
+    >
       {/* How bad it is, then who it hits, then what it says. Severity leads
           because it is what decides whether the rest is worth reading. */}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -335,6 +339,7 @@ function DisruptionCard({
           <ExternalLink className="size-3" aria-hidden="true" />
         </a>
       )}
+    </BoardBlock>
     </li>
   );
 }
