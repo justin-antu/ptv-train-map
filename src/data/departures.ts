@@ -135,10 +135,7 @@ export function departureRowsForStation(
       isSkipped: onward.isSkipped,
     }));
 
-    if (
-      filters.destinationStationId
-      && !onwardStops.some((onward) => onward.stationId === filters.destinationStationId && !onward.isSkipped)
-    ) {
+    if (filters.destinationStationId && !reachesDestination(onwardStops, filters.destinationStationId)) {
       continue;
     }
 
@@ -162,6 +159,52 @@ export function departureRowsForStation(
   }
 
   return rows.sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc));
+}
+
+/**
+ * Flagstaff, Melbourne Central and Parliament are often skipped on the
+ * afternoon inbound — those trains run direct to Flinders Street. A commute
+ * that ends at a loop station still wants the city-bound service.
+ */
+const CITY_LOOP_ONLY_IDS = new Set(["flagstaff", "melbourne-central", "parliament"]);
+const CITY_ACCESS_IDS = new Set([
+  "parliament",
+  "melbourne-central",
+  "flagstaff",
+  "southern-cross",
+  "flinders-street",
+]);
+
+const CITY_STATION_NAMES: Record<string, string> = {
+  "parliament": "Parliament",
+  "melbourne-central": "Melbourne Central",
+  "flagstaff": "Flagstaff",
+  "southern-cross": "Southern Cross",
+  "flinders-street": "Flinders Street",
+};
+
+export function reachesDestination(onwardStops: readonly OnwardStop[], destinationStationId: string): boolean {
+  if (onwardStops.some((onward) => onward.stationId === destinationStationId && !onward.isSkipped)) return true;
+  if (!CITY_LOOP_ONLY_IDS.has(destinationStationId)) return false;
+  return onwardStops.some((onward) => !onward.isSkipped && CITY_ACCESS_IDS.has(onward.stationId));
+}
+
+export function arrivalForDestination(
+  onwardStops: readonly OnwardStop[],
+  destinationStationId?: string | null,
+): { timeUtc: string; viaStationId?: string; viaStationName?: string } | null {
+  const served = destinationStationId
+    ? onwardStops.find((onward) => onward.stationId === destinationStationId && !onward.isSkipped)
+    : onwardStops.filter((onward) => !onward.isSkipped).at(-1);
+  if (served) return { timeUtc: served.estimatedTimeUtc ?? served.scheduledTimeUtc };
+  if (!destinationStationId || !CITY_LOOP_ONLY_IDS.has(destinationStationId)) return null;
+  const via = onwardStops.find((onward) => !onward.isSkipped && CITY_ACCESS_IDS.has(onward.stationId));
+  if (!via) return null;
+  return {
+    timeUtc: via.estimatedTimeUtc ?? via.scheduledTimeUtc,
+    viaStationId: via.stationId,
+    viaStationName: CITY_STATION_NAMES[via.stationId] ?? via.stationId,
+  };
 }
 
 /** Minutes late at which a departure is called out as delayed, matching `DelayBadge`. */
