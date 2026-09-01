@@ -212,33 +212,42 @@
   /* Absolute positioning keeps MapLibre's translate transform relative to the
    * map container origin. */
   position: absolute;
-  width: 22px;
-  height: 22px;
-  cursor: default;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
 }
 
-.train-marker-dot {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+.train-marker-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--train-color, #c45c12);
+  border: 2px solid #f4f1ea;
+  color: var(--train-ink, #f4f1ea);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/*
- * An interpolated marker is a guess between two timetabled calls, not a
- * measured position. A dashed ring reads as "approximate" without relying on
- * colour, which the delayed state already uses.
- */
-.train-marker--estimated .train-marker-dot {
+.dark .train-marker-badge {
+  border-color: #f4f1ea;
+}
+
+.train-marker-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.train-marker--estimated .train-marker-badge {
   border-style: dashed;
-  opacity: 0.8;
 }
 
-.train-marker--delayed .train-marker-dot {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.5),
-    0 0 0 2px #f4a300;
+.train-marker--delayed .train-marker-badge {
   animation: train-delayed-pulse 1.6s ease-in-out infinite;
 }
 
@@ -246,25 +255,14 @@
   0%,
   100% {
     box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 1px 2px rgba(0, 0, 0, 0.4),
       0 0 0 2px #f4a300;
   }
   50% {
     box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.5),
-      0 0 0 4px rgba(244, 163, 0, 0.55);
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 0 0 3px #f4a300;
   }
-}
-
-.train-marker-icon {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  line-height: 1;
-  transition: transform 0.15s ease-out;
 }
 
 /* Theme-aware panel scrollbars for WebKit and Firefox. */

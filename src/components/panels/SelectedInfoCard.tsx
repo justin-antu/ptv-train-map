@@ -14,6 +14,8 @@ interface SelectedInfoCardProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
+  /** Prefer this line's colour on the station card when the station serves several. */
+  preferredLineIds?: Set<string>;
   onClose: () => void;
 }
 
@@ -28,6 +30,7 @@ export function SelectedInfoCard({
   lineNameById,
   lineColorById,
   runs,
+  preferredLineIds,
   onClose,
 }: SelectedInfoCardProps) {
   const now = useNow(1000);
@@ -46,7 +49,7 @@ export function SelectedInfoCard({
     const departures = soonestPerLine(upcomingStopsForStation(station, runs, now));
 
     return (
-      <BoardBlock accent="hsl(var(--brand))" className="p-5 pl-6 sm:p-6">
+      <BoardBlock accent={stationAccent(station, departures, lineColorById, preferredLineIds)} className="p-5 pl-6 sm:p-6">
         <div className="flex items-start justify-between gap-2">
           <div className="type-heading min-w-0 flex-1 truncate text-base">{station.name}</div>
           <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target shrink-0 text-muted-foreground">
@@ -116,4 +119,19 @@ export function SelectedInfoCard({
       </div>
     </BoardBlock>
   );
+}
+
+function stationAccent(
+  station: StationStatic,
+  departures: ReadonlyArray<{ lineId: string }>,
+  lineColorById: Map<string, string>,
+  preferredLineIds?: Set<string>,
+): string {
+  const preferredDeparture = preferredLineIds && preferredLineIds.size > 0
+    ? departures.find((departure) => preferredLineIds.has(departure.lineId))
+    : undefined;
+  const departure = preferredDeparture ?? departures[0];
+  if (departure) return lineColorById.get(departure.lineId) ?? "hsl(var(--brand))";
+  const lineId = station.lineIds.find((id) => preferredLineIds?.has(id)) ?? station.lineIds[0];
+  return lineColorById.get(lineId ?? "") ?? "hsl(var(--brand))";
 }

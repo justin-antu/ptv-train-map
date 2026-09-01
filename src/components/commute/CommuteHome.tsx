@@ -92,18 +92,15 @@ export function CommuteHome({
 
   return (
     <div className="flex flex-col gap-10">
-    <div className="grid gap-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(16rem,0.9fr)] lg:items-start lg:gap-16">
-      <CountAnnouncer
-        message={
-          origin
-            ? `${rows.length} ${rows.length === 1 ? "departure" : "departures"} from ${origin.name}${destination ? ` stopping at ${destination.name}` : ""}`
-            : "No commute set"
-        }
-      />
-
       <div className="flex flex-col gap-4">
+        <CountAnnouncer
+          message={
+            origin
+              ? `${rows.length} ${rows.length === 1 ? "departure" : "departures"} from ${origin.name}${destination ? ` stopping at ${destination.name}` : ""}`
+              : "No commute set"
+          }
+        />
         {freshnessDetail && <p className="font-mono text-xs text-warning">{freshnessDetail}</p>}
-
         {criticalIncident && (
           <DisruptionTakeover
             incident={criticalIncident}
@@ -112,63 +109,66 @@ export function CommuteHome({
           />
         )}
 
-        {isInitialising && !hero ? (
-          <DeparturesSkeleton />
-        ) : empty ? (
-          <DeparturesEmptyState
-            reason={empty}
-            onClearLine={() => commute.setLine(null)}
-            onClearDestination={commute.reset}
-            onOpenTimetable={() => navigate("timetable")}
-          />
-        ) : hero ? (
-          <>
-            <HeroNextTrain
-              ref={cardRef}
-              row={hero}
-              now={now}
-              lineName={lineNameById.get(hero.lineId) ?? hero.lineId}
-              lineColor={lineColorById.get(hero.lineId) ?? "#152C6B"}
-              pattern={describeStoppingPattern(hero, stationNamesById, linesById.get(hero.lineId), hero.stationId)}
-              nextAlternative={nextAlternative}
-              isScheduleOnly={isScheduleOnly}
-            />
-            <div className="flex items-center justify-between gap-2 sm:gap-4">
-              <button
-                type="button"
-                onClick={() => void push.toggle()}
-                className="min-w-0 flex-1 text-left font-mono text-[clamp(0.625rem,2.7vw,0.75rem)] uppercase leading-snug tracking-widest text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                {push.enabled ? "Background alerts on" : "Alert me"}
-              </button>
-              <ShareService cardRef={cardRef} />
-            </div>
-          </>
-        ) : null}
-        {origin?.offCanonicalAlignment && (
-          <p className="font-mono text-xs text-muted-foreground">
-            {origin.name} sits off the drawn City Loop alignment. Times are real; the map line may not pass through this station.
-          </p>
-        )}
-        {install.visible && (
-          <p className="font-mono text-xs text-muted-foreground">
-            Add this to your home screen for the next weekday.
-            <button type="button" className="ml-2 underline-offset-4 hover:underline" onClick={install.dismiss}>
-              Dismiss
-            </button>
-          </p>
-        )}
-        {push.message && <p className="font-mono text-xs text-muted-foreground">{push.message}</p>}
-      </div>
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(16rem,0.9fr)] lg:items-start lg:gap-16">
+          <div className="flex flex-col gap-4">
+            {isInitialising && !hero ? (
+              <DeparturesSkeleton />
+            ) : empty ? (
+              <DeparturesEmptyState
+                reason={empty}
+                onClearLine={() => commute.setLine(null)}
+                onClearDestination={commute.reset}
+                onOpenTimetable={() => navigate("timetable")}
+              />
+            ) : hero ? (
+              <>
+                <HeroNextTrain
+                  ref={cardRef}
+                  row={hero}
+                  now={now}
+                  lineName={lineNameById.get(hero.lineId) ?? hero.lineId}
+                  lineColor={lineColorById.get(hero.lineId) ?? "#152C6B"}
+                  pattern={describeStoppingPattern(hero, stationNamesById, linesById.get(hero.lineId), hero.stationId)}
+                  nextAlternative={nextAlternative}
+                  isScheduleOnly={isScheduleOnly}
+                />
+                <div className="flex items-center justify-between gap-2 sm:gap-4">
+                  <button
+                    type="button"
+                    onClick={() => void push.toggle()}
+                    className="min-w-0 flex-1 text-left font-mono text-[clamp(0.625rem,2.7vw,0.75rem)] uppercase leading-snug tracking-widest text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    {push.enabled ? "Background alerts on" : "Alert me"}
+                  </button>
+                  <ShareService cardRef={cardRef} />
+                </div>
+              </>
+            ) : null}
+            {origin?.offCanonicalAlignment && (
+              <p className="font-mono text-xs text-muted-foreground">
+                {origin.name} sits off the drawn City Loop alignment. Times are real; the map line may not pass through this station.
+              </p>
+            )}
+            {install.visible && (
+              <p className="font-mono text-xs text-muted-foreground">
+                Add this to your home screen for the next weekday.
+                <button type="button" className="ml-2 underline-offset-4 hover:underline" onClick={install.dismiss}>
+                  Dismiss
+                </button>
+              </p>
+            )}
+            {push.message && <p className="font-mono text-xs text-muted-foreground">{push.message}</p>}
+          </div>
 
-      <aside className="flex flex-col gap-8 lg:pt-2">
-        <LaterTrains
-          rows={later}
-          now={now}
-          lineColorById={lineColorById}
-        />
-      </aside>
-    </div>
+          <aside className="flex flex-col gap-8">
+            <LaterTrains
+              rows={later}
+              now={now}
+              lineColorById={lineColorById}
+            />
+          </aside>
+        </div>
+      </div>
 
       <NetworkStatsCard trainsRunning={trainsRunning} linesActive={linesActive} />
     </div>

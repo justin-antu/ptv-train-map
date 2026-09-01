@@ -40,6 +40,12 @@ export default function App() {
   const stationsById = useMemo(() => new Map((staticData?.stations ?? []).map((s) => [s.id, s])), [staticData]);
   const lineNameById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.name])), [staticData]);
   const lineColorById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.color])), [staticData]);
+  const routeLineIds = useMemo(() => {
+    if (commute.lineId) return new Set([commute.lineId]);
+    const originLines = stationsById.get(commute.originStationId ?? "")?.lineIds ?? [];
+    const destinationLines = new Set(stationsById.get(commute.destinationStationId ?? "")?.lineIds ?? []);
+    return new Set(originLines.filter((id) => destinationLines.has(id)));
+  }, [commute.lineId, commute.originStationId, commute.destinationStationId, stationsById]);
 
   useEffect(() => {
     if (live.needsScheduleFallback) setTimetableEnabled(true);
@@ -180,7 +186,7 @@ export default function App() {
                 lineNameById={lineNameById}
                 lineColorById={lineColorById}
                 runs={live.runs}
-                visibleLineIds={lineFilter.effectiveLineIds}
+                routeLineIds={routeLineIds}
                 selection={selection}
                 onStationSelect={handleStationSelect}
                 onTrainSelect={handleTrainSelect}

@@ -18,7 +18,11 @@ export function BoardBlock({ accent, className, children }: BoardBlockProps) {
       )}
     >
       {accent && (
-        <span aria-hidden="true" className="absolute inset-y-0 left-0 w-2" style={{ background: accent }} />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-2"
+          style={{ background: accent }}
+        />
       )}
       {children}
     </div>
