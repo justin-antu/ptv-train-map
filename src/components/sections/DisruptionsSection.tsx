@@ -54,7 +54,9 @@ interface DisruptionsSectionProps {
  * The line chips are the scope control rather than a second, private filter:
  * picking one here is the same act as picking one in the header, so the alerts
  * feed and the departure board can never disagree about which line the reader
- * is looking at.
+ * is looking at. That equivalence is why they are safe to drop on phones,
+ * where sixteen of them cost five rows above the first alert; the header
+ * picker reaches the same state from anywhere.
  */
 export function DisruptionsSection({
   disruptionsByLine,
@@ -132,7 +134,10 @@ export function DisruptionsSection({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             {linesWithAlerts.length > 1 && (
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter alerts by line">
+              // Desktop only. On a phone these wrapped to five rows of chips
+              // and pushed the actual alerts below the fold, to do a job the
+              // header's line picker already does from every section.
+              <div className="hidden flex-wrap items-center gap-1.5 lg:flex" role="group" aria-label="Filter alerts by line">
                 {linesWithAlerts.map((lineId) => {
                   const selected = scopeLineId === lineId;
                   return (
