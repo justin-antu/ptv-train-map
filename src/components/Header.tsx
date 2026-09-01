@@ -20,6 +20,9 @@ interface HeaderProps {
   freshnessLabel: string;
   freshnessTone: "success" | "muted" | "warning";
   trainCount: number;
+  /** Active alerts, badged on the Alerts link exactly as on the mobile tab bar. */
+  alertCount: number;
+  hasCriticalAlert: boolean;
   activeSection: SectionId;
   onNavigate: (sectionId: SectionId) => void;
   /** Returns to the departures board and, on desktop, the top of the page. */
@@ -37,6 +40,8 @@ export const Header = memo(function Header({
   freshnessLabel,
   freshnessTone,
   trainCount,
+  alertCount,
+  hasCriticalAlert,
   activeSection,
   onNavigate,
   onHome,
@@ -100,7 +105,12 @@ export const Header = memo(function Header({
         />
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <DesktopNav activeSection={activeSection} onNavigate={onNavigate} />
+          <DesktopNav
+            activeSection={activeSection}
+            onNavigate={onNavigate}
+            alertCount={alertCount}
+            hasCriticalAlert={hasCriticalAlert}
+          />
           <LiveStatusDot label={freshnessLabel} tone={freshnessTone} trainCount={trainCount} />
           <AnimatedThemeToggler
             theme={theme}

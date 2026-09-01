@@ -163,6 +163,8 @@ function AppShellContent({
           freshnessLabel={freshness.label}
           freshnessTone={freshness.tone}
           trainCount={trainCount}
+          alertCount={alertCount}
+          hasCriticalAlert={hasCriticalAlert}
           activeSection={activeSection}
           onNavigate={navigate}
           onHome={goHome}

@@ -16,6 +16,10 @@ import { cn } from "../../lib/utils";
 import type { LineDisruption } from "../../shared/types";
 
 /**
+ * Red, amber, blue — the three bands are meant to be told apart at a glance,
+ * which the previous palette could not do: minor delays and information both
+ * rendered in amber, differing only by opacity.
+ *
  * Only the severity chip carries a tone; the card itself stays neutral so the
  * alert text reads at the same contrast as the rest of the app.
  */
@@ -29,7 +33,7 @@ const SEVERITY_STYLES: Record<DisruptionSeverity, { chip: string; icon: typeof A
     icon: AlertTriangle,
   },
   info: {
-    chip: "border-warning-border/40 bg-warning-surface text-warning-foreground/80",
+    chip: "border-info-border/60 bg-info-surface text-info-foreground",
     icon: Info,
   },
 };
@@ -287,8 +291,17 @@ function DisruptionCard({
 
   return (
     <li className="flex flex-col rounded-xl border border-border bg-card/80 p-4 shadow-sm">
-      {/* Which lines this touches is the first question, so it is the first line. */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+      {/* How bad it is, then who it hits, then what it says. Severity leads
+          because it is what decides whether the rest is worth reading. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={cn("type-label flex items-center gap-1 rounded-full border px-2 py-0.5", styles.chip)}>
+          <Icon className="size-3" aria-hidden="true" />
+          {DISRUPTION_SEVERITY_LABELS[severity]}
+        </span>
+        {disruption.disruptionType && <span className="type-label text-muted-foreground">{disruption.disruptionType}</span>}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
         {lineIds.map((lineId) => (
           <span key={lineId} className="flex items-center gap-1.5 text-2xs font-medium">
             <span
@@ -299,14 +312,6 @@ function DisruptionCard({
             {lineNameById.get(lineId) ?? lineId}
           </span>
         ))}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className={cn("type-label flex items-center gap-1 rounded-full border px-2 py-0.5", styles.chip)}>
-          <Icon className="size-3" aria-hidden="true" />
-          {DISRUPTION_SEVERITY_LABELS[severity]}
-        </span>
-        {disruption.disruptionType && <span className="type-label text-muted-foreground">{disruption.disruptionType}</span>}
       </div>
 
       <h4 className="mt-2 flex-1 text-xs leading-relaxed font-medium">{entry.headline}</h4>
