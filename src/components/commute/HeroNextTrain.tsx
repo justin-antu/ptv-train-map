@@ -13,6 +13,9 @@ function clockTime(iso: string): string {
 interface HeroNextTrainProps {
   row: DepartureRow;
   now: number;
+  originName: string;
+  destinationName: string;
+  destinationStationId?: string | null;
   lineName: string;
   lineColor: string;
   pattern: string;
@@ -27,6 +30,9 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
   {
     row,
     now,
+    originName,
+    destinationName,
+    destinationStationId,
     lineName,
     lineColor,
     pattern,
@@ -38,6 +44,10 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
   const status = departureStatus(row);
   const scheduled = clockTime(row.scheduledTimeUtc);
   const expected = row.estimatedTimeUtc ? clockTime(row.estimatedTimeUtc) : null;
+  const departTime = clockTime(row.timeUtc);
+  const arriveAt = arrivalCall(row, destinationStationId);
+  const arriveTime = arriveAt ? clockTime(arriveAt) : null;
+  const issued = ticketStamp(now);
   const isRetimed = expected !== null && expected !== scheduled;
   const remainingMs = Date.parse(row.timeUtc) - now;
   const dueSoon = !row.isCancelled && remainingMs > 0 && remainingMs <= DUE_SOON_MS;
@@ -49,7 +59,7 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
     ? `${scheduled} to ${row.destinationName}, ${lineName} line. Cancelled.`
       + (nextAlternative ? ` Next ${nextAlternative.destinationName} service ${clockTime(nextAlternative.timeUtc)}.` : "")
     : [
-      `${scheduled} to ${row.destinationName}, ${lineName} line`,
+      `${scheduled} from ${originName} to ${destinationName}, ${lineName} line`,
       row.platform ? `platform ${row.platform}` : null,
       status.label.toLowerCase(),
       isRetimed ? `expected ${expected}` : null,
@@ -79,7 +89,12 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
         </span>
       )}
 
-      <p className="type-label pl-3 text-muted-foreground">Next</p>
+      <div className="flex items-baseline justify-between gap-4 pl-3">
+        <p className="type-label text-muted-foreground">Next</p>
+        <p className="font-mono text-[clamp(0.625rem,2.4vw,0.75rem)] uppercase tracking-widest text-muted-foreground">
+          {issued}
+        </p>
+      </div>
 
       <div className="mt-3 flex flex-wrap items-end justify-between gap-6 pl-3">
         <div className="min-w-0">
@@ -117,8 +132,21 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
         )}
       </div>
 
-      <h2 className="type-display mt-6 pl-3 text-3xl sm:text-5xl">{row.destinationName}</h2>
-      <p className="mt-3 pl-3 font-mono text-xs text-muted-foreground sm:text-sm">
+      <div className="relative mt-8 grid grid-cols-[1fr_auto_1fr] items-start gap-3 border-t border-dashed border-border/80 pt-6 pl-3 sm:gap-5">
+        <div className="min-w-0">
+          <p className="type-label text-muted-foreground">Depart</p>
+          <h2 className="type-heading mt-1 truncate text-lg sm:text-2xl">{originName}</h2>
+          <p className="mt-1 font-mono text-sm tabular-nums">{departTime}</p>
+        </div>
+        <span aria-hidden="true" className="mt-7 font-mono text-xs text-muted-foreground">→</span>
+        <div className="min-w-0 text-right">
+          <p className="type-label text-muted-foreground">Arrive</p>
+          <p className="type-heading mt-1 truncate text-lg sm:text-2xl">{destinationName}</p>
+          <p className="mt-1 font-mono text-sm tabular-nums">{arriveTime ?? "—"}</p>
+        </div>
+      </div>
+
+      <p className="mt-5 pl-3 font-mono text-xs text-muted-foreground sm:text-sm">
         {lineName} line
         <span className="mx-2">·</span>
         {pattern}
@@ -147,3 +175,18 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
     </article>
   );
 });
+
+function arrivalCall(row: DepartureRow, destinationStationId?: string | null): string | null {
+  const stop = destinationStationId
+    ? row.onwardStops.find((onward) => onward.stationId === destinationStationId && !onward.isSkipped)
+    : row.onwardStops.filter((onward) => !onward.isSkipped).at(-1);
+  if (!stop) return null;
+  return stop.estimatedTimeUtc ?? stop.scheduledTimeUtc;
+}
+
+function ticketStamp(now: number): string {
+  const date = new Date(now);
+  const day = date.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time}`;
+}

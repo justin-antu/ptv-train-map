@@ -126,6 +126,9 @@ export function CommuteHome({
                   ref={cardRef}
                   row={hero}
                   now={now}
+                  originName={origin.name}
+                  destinationName={destination?.name ?? hero.destinationName}
+                  destinationStationId={destination?.id}
                   lineName={lineNameById.get(hero.lineId) ?? hero.lineId}
                   lineColor={lineColorById.get(hero.lineId) ?? "#152C6B"}
                   pattern={describeStoppingPattern(hero, stationNamesById, linesById.get(hero.lineId), hero.stationId)}
