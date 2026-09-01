@@ -6,9 +6,9 @@ import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-500.css";
 import "@fontsource/ibm-plex-mono/latin-600.css";
 import "@fontsource/ibm-plex-mono/latin-700.css";
-import "maplibre-gl/dist/maplibre-gl.css";
 import "./index.css";
 import App from "./App";
+import { warmOfflineCache } from "./data/loadData";
 import { installThemeTokens } from "./theme/applyThemeTokens";
 
 // Publish design tokens before the first React render so components never
@@ -23,3 +23,7 @@ createRoot(rootEl).render(
     <App />
   </StrictMode>,
 );
+
+// After the first render, never before it: this competes for bandwidth with
+// the data the screen is waiting on.
+void warmOfflineCache();

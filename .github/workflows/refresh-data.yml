@@ -1,35 +1,46 @@
 name: Refresh live Metro Trains Melbourne data
 
-# Fetches predicted departures for all 16 in-scope Metro lines and commits
-# public/data/network-live.json for the static GitHub Pages deployment.
+# Rebuilds public/data/network-live.json for the static GitHub Pages
+# deployment: the shipped GTFS timetable as the spine, with GTFS-Realtime trip
+# updates and vehicle positions layered over it.
 #
-# Three sub-fetches approximately 80 seconds apart improve freshness within
-# GitHub Actions' five-minute minimum reliable scheduling interval. Bounded
-# concurrency controls approximately 300 line/station requests per fetch.
+# One run covers roughly an hour and then starts its successor, rather than
+# relying on a `*/5` cron. Measured over a week, that cron was honoured in
+# bursts a few times a day with two- to six-hour gaps between them: GitHub
+# treats scheduled workflows as best effort and drops high-frequency ones under
+# load. A commuter checking departures at 8am was routinely reading a snapshot
+# taken before midnight.
 #
 # GITHUB_TOKEN-authored pushes do not trigger downstream push workflows.
 # Explicit dispatch is therefore required to start deploy.yml after a change.
 
 on:
+  # Only a watchdog. The chain below is what actually keeps data fresh; this
+  # restarts it on the hour if a run was cancelled, timed out, or never landed.
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
   actions: write
 
+# At most one running and one pending run exist per group, so the self-dispatch
+# and the watchdog cannot multiply into parallel chains.
 concurrency:
   group: refresh-data
   cancel-in-progress: false
 
 env:
-  SUBFETCH_COUNT: 3
-  SUBFETCH_INTERVAL_SECONDS: 80
+  FETCH_COUNT: 14
+  FETCH_INTERVAL_SECONDS: 240
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Bounds a wedged run so it cannot hold the concurrency group for the
+    # six-hour job maximum, which would stall the chain for a whole morning.
+    timeout-minutes: 70
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,49 +54,71 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fetch live data a few times and commit each snapshot
+      # A missing secret resolves to an empty string rather than failing, and a
+      # keyless run still produces a valid-looking snapshot — just one with no
+      # real-time layer at all. Silently publishing that degrades every screen
+      # in the app, so it fails here instead.
+      - name: Verify the GTFS-Realtime key is present
+        env:
+          VIC_GTFS_R_KEY: ${{ secrets.VIC_GTFS_R_KEY }}
+        run: |
+          if [ -z "${VIC_GTFS_R_KEY:-}" ]; then
+            echo "::error::VIC_GTFS_R_KEY is not set, so the snapshot would carry timetable times with no real-time layer. Register at https://opendata.transport.vic.gov.au and add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Fetch live data on a loop and commit each snapshot
         id: fetch
         env:
+          VIC_GTFS_R_KEY: ${{ secrets.VIC_GTFS_R_KEY }}
           PTV_DEV_ID: ${{ secrets.PTV_DEV_ID }}
           PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          if [ -z "${PTV_DEV_ID:-}" ] || [ -z "${PTV_API_KEY:-}" ]; then
-            echo "::warning::PTV_DEV_ID / PTV_API_KEY secrets are not set yet — skipping live data fetch. The site will keep showing demo/sample data until these are configured (see README)."
-            exit 0
-          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          changed=false
+          for i in $(seq 1 "${FETCH_COUNT}"); do
+            echo "--- Fetch ${i}/${FETCH_COUNT} ---"
 
-          for i in $(seq 1 "${SUBFETCH_COUNT}"); do
-            echo "--- Fetch attempt ${i}/${SUBFETCH_COUNT} ---"
+            # A single failed fetch is a blip, not a reason to abandon the hour.
             if npx tsx scripts/fetch-live-data.ts; then
-              if ! git diff --quiet -- public/data/network-live.json; then
+              if git diff --quiet -- public/data/network-live.json; then
+                echo "No change in live data snapshot; skipping commit."
+              else
                 git add public/data/network-live.json
                 git commit -m "chore(data): refresh live Metro Trains Melbourne departures ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-                bash scripts/push-generated-data.sh
-                changed=true
-              else
-                echo "No change in live data snapshot; skipping commit."
+                if bash scripts/push-generated-data.sh; then
+                  # Published immediately rather than batched to the end of the
+                  # run: data that reaches main but not Pages helps nobody.
+                  gh workflow run deploy.yml --ref main
+                else
+                  # Almost always a concurrent commit on main. Abandoning the
+                  # local commit and resyncing costs one four-minute slot;
+                  # letting the step die would cost the rest of the hour.
+                  echo "::warning::Push ${i} failed; discarding the local commit and resyncing."
+                  git fetch origin main && git reset --hard origin/main
+                fi
               fi
             else
-              echo "::warning::Live data fetch attempt ${i} failed; will retry on next attempt/run."
+              echo "::warning::Live data fetch ${i} failed; continuing to the next interval."
             fi
 
-            if [ "${i}" -lt "${SUBFETCH_COUNT}" ]; then
-              sleep "${SUBFETCH_INTERVAL_SECONDS}"
+            if [ "${i}" -lt "${FETCH_COUNT}" ]; then
+              sleep "${FETCH_INTERVAL_SECONDS}"
             fi
           done
 
-          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
-
-      - name: Trigger a Pages deploy for the new data
-        # One deployment publishes the final main state after all sub-fetches.
-        if: steps.fetch.outputs.changed == 'true'
+      # Only on success, and only from a step that takes an hour by
+      # construction. Handing over after a failure would turn a systemic
+      # problem — a revoked key, a broken lockfile — into a run that fails in
+      # ninety seconds and immediately restarts itself, forever. Individual
+      # fetch and push failures are already absorbed inside the loop, so the
+      # hourly watchdog is the right recovery for anything that gets past it.
+      - name: Start the successor run
+        if: steps.fetch.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run deploy.yml --ref main
+        run: gh workflow run refresh-data.yml --ref main

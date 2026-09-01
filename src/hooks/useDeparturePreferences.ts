@@ -1,9 +1,19 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORIGIN_STATION_ID } from "../shared/commute";
 
 const ORIGIN_KEY = "wimt:originStation";
 const DESTINATION_KEY = "wimt:destinationStation";
 const LINE_KEY = "wimt:lineFilter";
+
+/**
+ * Query parameters mirroring the board's state, following National Rail's
+ * `/departures/{from}/to/{to}` grammar closely enough to be guessable. A board
+ * is a thing people send each other ("here's the 5:12 from Box Hill"), so it
+ * needs an address.
+ */
+const ORIGIN_PARAM = "from";
+const DESTINATION_PARAM = "to";
+const LINE_PARAM = "line";
 
 /** Keys from the commute-settings model this replaces. */
 const LEGACY_TO_CITY_KEY = "wimt:commuteToCity";
@@ -15,13 +25,18 @@ const LEGACY_FAVOURITE_KEY = "wimt:favouriteStationId";
 export interface DeparturePreferences {
   /** Station the board reads departures from. */
   originStationId: string | null;
-  /** Where the commuter is heading. Context only — it does not filter departures. */
+  /**
+   * Where the commuter is heading. A real filter: only services that later call
+   * at this station are shown.
+   */
   destinationStationId: string | null;
   /** Single line to narrow the whole app to, or null for the entire network. */
   lineId: string | null;
 }
 
 export interface DeparturePreferencesController extends DeparturePreferences {
+  /** True when nothing has been chosen yet, so there is nothing for a reset to undo. */
+  isDefault: boolean;
   setOrigin(stationId: string | null): void;
   setDestination(stationId: string | null): void;
   setLine(lineId: string | null): void;
@@ -71,9 +86,12 @@ function readFirstOfArray(key: string): string | null {
  * running again.
  */
 function loadPreferences(): DeparturePreferences {
-  let originStationId = readString(ORIGIN_KEY);
-  let destinationStationId = readString(DESTINATION_KEY);
-  let lineId = readString(LINE_KEY);
+  // A shared link is an explicit request for a particular board, so it takes
+  // precedence over whatever this device happens to have saved.
+  const params = new URLSearchParams(window.location.search);
+  let originStationId = params.get(ORIGIN_PARAM) || readString(ORIGIN_KEY);
+  let destinationStationId = params.get(DESTINATION_PARAM) || readString(DESTINATION_KEY);
+  let lineId = params.get(LINE_PARAM) || readString(LINE_KEY);
 
   if (originStationId === null) {
     const legacy = readString(LEGACY_TO_CITY_KEY) ?? readString(LEGACY_FAVOURITE_KEY);
@@ -117,11 +135,34 @@ function persist(preferences: DeparturePreferences): void {
 }
 
 /**
+ * Mirrors the board into the address bar without touching the fragment, which
+ * the shell owns for section navigation. `replaceState` rather than `pushState`
+ * because changing a filter is not a navigation — it should not take four back
+ * presses to leave the page.
+ */
+function reflectInUrl(preferences: DeparturePreferences): void {
+  const url = new URL(window.location.href);
+  const apply = (key: string, value: string | null) => {
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
+  };
+  apply(ORIGIN_PARAM, preferences.originStationId);
+  apply(DESTINATION_PARAM, preferences.destinationStationId);
+  apply(LINE_PARAM, preferences.lineId);
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+    window.history.replaceState(window.history.state, "", next);
+  }
+}
+
+/**
  * Owns the departure board's saved origin, destination, and line. Everything
  * lives in `localStorage`; the app has no accounts or server-side state.
  */
 export function useDeparturePreferences(): DeparturePreferencesController {
   const [preferences, setPreferences] = useState<DeparturePreferences>(loadPreferences);
+
+  useEffect(() => reflectInUrl(preferences), [preferences]);
 
   /** Single write path, so every change is persisted exactly once. */
   const mutate = useCallback((change: (prev: DeparturePreferences) => DeparturePreferences) => {
@@ -160,8 +201,12 @@ export function useDeparturePreferences(): DeparturePreferencesController {
     [mutate],
   );
 
+  const isDefault = preferences.originStationId === DEFAULT_ORIGIN_STATION_ID
+    && !preferences.destinationStationId
+    && !preferences.lineId;
+
   return useMemo(
-    () => ({ ...preferences, setOrigin, setDestination, setLine, swap, reset }),
-    [preferences, setOrigin, setDestination, setLine, swap, reset],
+    () => ({ ...preferences, isDefault, setOrigin, setDestination, setLine, swap, reset }),
+    [preferences, isDefault, setOrigin, setDestination, setLine, swap, reset],
   );
 }

@@ -1,15 +1,14 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
+// Imported here rather than in main.tsx so the stylesheet travels with the
+// lazily-loaded map chunk instead of blocking the first paint of every visit.
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
 import { addLineAndStations, createMap, queryStationIdAt, setVisibleLines, setupStationHoverCursor } from "../map/map";
 import { startAnimationLoop } from "../trains/animate";
 import { buildInterpolationContext, computeTrainPositions, type TrainPosition } from "../trains/interpolate";
 import { TrainMarkerLayer } from "../trains/trainMarkers";
 import { RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS, TRAIN_UPDATE_INTERVAL_MS } from "../config";
-
-export interface MapViewHandle {
-  flyToStation(station: StationStatic): void;
-}
 
 interface MapViewProps {
   staticData: NetworkStaticData;
@@ -28,11 +27,16 @@ interface MapViewProps {
  *
  * `memo` prevents unrelated application updates from re-rendering the wrapper.
  */
-export const MapView = memo(
-  forwardRef<MapViewHandle, MapViewProps>(function MapView(
-    { staticData, stationsById, lineColorById, runs, visibleLineIds, onStationSelect, onTrainSelect, onBackgroundClick },
-    ref,
-  ) {
+export const MapView = memo(function MapView({
+  staticData,
+  stationsById,
+  lineColorById,
+  runs,
+  visibleLineIds,
+  onStationSelect,
+  onTrainSelect,
+  onBackgroundClick,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerLayerRef = useRef<TrainMarkerLayer | null>(null);
@@ -98,19 +102,5 @@ export const MapView = memo(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staticData]);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      flyToStation(station) {
-        const map = mapRef.current;
-        if (!map) return;
-        map.flyTo({ center: [station.lon, station.lat], zoom: Math.max(map.getZoom(), 12), essential: true });
-      },
-    }),
-    [],
-  );
-
   return <div ref={containerRef} className="absolute inset-0" />;
-  }),
-);
-MapView.displayName = "MapView";
+});

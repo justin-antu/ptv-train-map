@@ -4,10 +4,14 @@ import { cn } from "../../lib/utils";
 interface DesktopNavProps {
   activeSection: SectionId;
   onNavigate: (sectionId: SectionId) => void;
+  /** Badge count shown on the Alerts link, matching the mobile tab bar. */
+  alertCount: number;
+  /** Raises the badge to destructive when a line the commuter uses is suspended. */
+  hasCriticalAlert: boolean;
 }
 
 /** Section links for the desktop single-scroll layout. */
-export function DesktopNav({ activeSection, onNavigate }: DesktopNavProps) {
+export function DesktopNav({ activeSection, onNavigate, alertCount, hasCriticalAlert }: DesktopNavProps) {
   return (
     <nav aria-label="Sections" className="hidden items-center gap-1 lg:flex">
       {APP_SECTIONS.map(({ id, label }) => (
@@ -20,11 +24,27 @@ export function DesktopNav({ activeSection, onNavigate }: DesktopNavProps) {
             onNavigate(id);
           }}
           className={cn(
-            "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
             id === activeSection ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
           )}
         >
           {label}
+          {id === "alerts" && alertCount > 0 && (
+            // Outlined rather than filled, unlike the mobile tab badge: this one
+            // sits inline with the label instead of over an icon, and a solid
+            // block of colour there reads as a selected state.
+            <span
+              className={cn(
+                "type-numeric flex min-w-4 justify-center rounded-full border px-1 text-3xs leading-4 font-semibold",
+                hasCriticalAlert ? "border-destructive text-destructive" : "border-border text-muted-foreground",
+              )}
+            >
+              <span aria-hidden="true">{alertCount > 9 ? "9+" : alertCount}</span>
+              <span className="sr-only">
+                {alertCount} active{hasCriticalAlert && ", including a major disruption on your lines"}
+              </span>
+            </span>
+          )}
         </a>
       ))}
     </nav>

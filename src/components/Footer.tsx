@@ -11,7 +11,7 @@ function GithubMark({ className }: { className?: string }) {
 
 export function Footer() {
   return (
-    <footer className="relative z-10 border-t border-border bg-card/60 px-4 py-2.5 text-center text-[11px] leading-relaxed text-muted-foreground backdrop-blur-sm sm:px-6">
+    <footer className="relative z-10 border-t border-border bg-card/60 px-4 py-2.5 text-center text-2xs leading-relaxed text-muted-foreground backdrop-blur-sm sm:px-6">
       {/* Phones get abbreviated labels and no lead-in prose, which keeps the
           whole credit on one line instead of wrapping to six. */}
       <p className="mx-auto max-w-4xl">
@@ -35,24 +35,8 @@ export function Footer() {
           <span className="sm:hidden">GTFS</span>
           <span className="hidden sm:inline">Victorian GTFS Schedule</span>
         </a>{" "}
-        {/* The map carries its own CARTO/OSM attribution control, so this clause
-            is a duplicate and phones drop it. */}
-        <span className="hidden sm:inline">
-          · Basemap:{" "}
-          <a className="underline underline-offset-2 hover:text-foreground" href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">
-            CARTO
-          </a>{" "}
-          ©{" "}
-          <a
-            className="underline underline-offset-2 hover:text-foreground"
-            href="https://www.openstreetmap.org/copyright"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            OpenStreetMap
-          </a>{" "}
-          contributors{" "}
-        </span>
+        {/* No basemap credit here: the map's own compact attribution control
+            already carries CARTO and OpenStreetMap. */}
         ·{" "}
         <a
           className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"

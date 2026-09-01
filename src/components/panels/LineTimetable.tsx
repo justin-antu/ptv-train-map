@@ -1,10 +1,18 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarDays, ChevronDown, TrainFront } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowDownToLine, CalendarDays, ChevronDown, LayoutGrid, List, TrainFront } from "lucide-react";
+import { SearchableSelect, type SelectItem } from "../SearchableSelect";
+import { ScopeChip } from "../ScopeChip";
+import { CountAnnouncer } from "../CountAnnouncer";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useNow } from "../../hooks/useNow";
+import { melbourneDateString, melbourneMinutesOfDay } from "../../shared/melbourneTime";
 import { cn } from "../../lib/utils";
-import type { NetworkTimetableData, TimetableService } from "../../shared/types";
+import type { NetworkTimetableData, TimetableDirection, TimetableService } from "../../shared/types";
+import type { TimetableFocus } from "../../shared/timetableFocus";
 
-const LINE_STORAGE_KEY = "wimt:timetableLine";
+const STATION_STORAGE_KEY = "wimt:timetableStation";
+/** Matches the breakpoint the layout toggle itself appears at. */
+const GRID_QUERY = "(min-width: 1024px)";
 const ROW_HEIGHT = 44;
 const OVERSCAN = 8;
 
@@ -12,107 +20,136 @@ interface LineTimetableProps {
   data: NetworkTimetableData | null;
   loading: boolean;
   error: Error | null;
+  /**
+   * The app-wide line scope. The timetable used to keep its own line under a
+   * private storage key, so narrowing the app to one line changed every section
+   * except this one.
+   */
+  scopeLineId: string | null;
+  onClearScope: () => void;
+  focus: TimetableFocus | null;
 }
 
-function persistedLine(): string {
+function persistedStation(): string | null {
   try {
-    return localStorage.getItem(LINE_STORAGE_KEY) || "lilydale";
+    return localStorage.getItem(STATION_STORAGE_KEY);
   } catch {
-    return "lilydale";
+    return null;
   }
-}
-
-function melbourneNow(timestamp: number): { date: string; minute: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Australia/Melbourne",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(timestamp);
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "0";
-  return {
-    date: `${value("year")}-${value("month")}-${value("day")}`,
-    minute: Number(value("hour")) * 60 + Number(value("minute")),
-  };
 }
 
 function firstTime(service: TimetableService): number {
   return service.times.find((time): time is number => time !== null) ?? Number.POSITIVE_INFINITY;
 }
 
-function lastTime(service: TimetableService): number {
-  for (let index = service.times.length - 1; index >= 0; index -= 1) {
-    const time = service.times[index];
-    if (time !== null) return time;
-  }
-  return Number.NEGATIVE_INFINITY;
-}
-
-function relevantServiceIndex(services: TimetableService[], nowMinute: number): number {
-  const active = services.findIndex((service) => firstTime(service) <= nowMinute && lastTime(service) >= nowMinute);
-  if (active >= 0) return active;
-  const next = services.findIndex((service) => firstTime(service) >= nowMinute);
-  return next >= 0 ? next : Math.max(0, services.length - 1);
-}
-
-export const LineTimetable = memo(function LineTimetable({ data, loading, error }: LineTimetableProps) {
+export const LineTimetable = memo(function LineTimetable({
+  data,
+  loading,
+  error,
+  scopeLineId,
+  onClearScope,
+  focus,
+}: LineTimetableProps) {
   const nowTimestamp = useNow(60_000);
-  const now = useMemo(() => melbourneNow(nowTimestamp), [nowTimestamp]);
-  const [lineId, setLineId] = useState(persistedLine);
+  const now = useMemo(
+    () => ({ date: melbourneDateString(new Date(nowTimestamp)), minute: melbourneMinutesOfDay(new Date(nowTimestamp)) }),
+    [nowTimestamp],
+  );
+
+  const [localLineId, setLocalLineId] = useState<string | null>(null);
   const [date, setDate] = useState("");
   const [directionId, setDirectionId] = useState("");
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(500);
-  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [stationId, setStationId] = useState<string | null>(persistedStation);
+  const [patternId, setPatternId] = useState<string | null>(null);
+  // Null until the reader picks a layout, so the default can follow the screen
+  // without overriding them afterwards. The grid is only the default where the
+  // toggle exists to escape it: below `lg` there is no control, and a
+  // horizontally scrolling table would be the only thing on offer.
+  const [viewChoice, setViewChoice] = useState<"station" | "matrix" | null>(null);
+  const isWide = useMediaQuery(GRID_QUERY);
+  const view = viewChoice ?? (isWide ? "matrix" : "station");
 
+  const lineId = scopeLineId ?? localLineId;
   const line = data?.lines.find((candidate) => candidate.id === lineId) ?? data?.lines[0];
   const direction = line?.directions.find((candidate) => candidate.id === directionId) ?? line?.directions[0];
   const dateIndex = data?.availableDates.indexOf(date) ?? -1;
+
   const services = useMemo(
-    () => dateIndex < 0 ? [] : (direction?.services ?? []).filter((service) => (service.dateMask & (1 << dateIndex)) !== 0),
+    () => (dateIndex < 0 ? [] : (direction?.services ?? []).filter((service) => (service.dateMask & (1 << dateIndex)) !== 0)),
     [dateIndex, direction],
   );
-  const isCurrentDate = date === now.date;
-  const highlightedIndex = isCurrentDate && services.length > 0 ? relevantServiceIndex(services, now.minute) : -1;
+
+  // Only patterns that actually run on the chosen date are offered: a variant
+  // that exists but has no services today is a dead end.
+  const patterns = useMemo(() => {
+    if (!direction) return [];
+    const counts = new Map<string, number>();
+    for (const service of services) counts.set(service.patternId, (counts.get(service.patternId) ?? 0) + 1);
+    return direction.patterns
+      .filter((pattern) => counts.has(pattern.id))
+      .map((pattern) => ({ ...pattern, serviceCount: counts.get(pattern.id)! }));
+  }, [direction, services]);
+
+  const activePattern = patterns.find((pattern) => pattern.id === patternId) ?? null;
 
   useEffect(() => {
     if (!data || data.lines.length === 0) return;
-    const nextLine = data.lines.some((candidate) => candidate.id === lineId) ? lineId : data.lines[0].id;
-    if (nextLine !== lineId) setLineId(nextLine);
+    if (!scopeLineId && !data.lines.some((candidate) => candidate.id === localLineId)) setLocalLineId(data.lines[0].id);
     if (!date) setDate(now.date);
-  }, [data, date, lineId, now.date]);
+  }, [data, date, localLineId, scopeLineId, now.date]);
 
   useEffect(() => {
-    if (!line) return;
-    if (!line.directions.some((candidate) => candidate.id === directionId)) {
+    if (line && !line.directions.some((candidate) => candidate.id === directionId)) {
       setDirectionId(line.directions[0]?.id ?? "");
     }
   }, [line, directionId]);
 
+  // A station saved from another line, or one this direction does not serve,
+  // silently produces an empty list; fall back to the direction's own busiest
+  // end instead.
   useEffect(() => {
-    const element = scrollerRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(() => setViewportHeight(element.clientHeight));
-    observer.observe(element);
-    return () => observer.disconnect();
+    if (!direction) return;
+    if (!stationId || !direction.stationIds.includes(stationId)) {
+      setStationId(direction.stationIds[0] ?? null);
+    }
+  }, [direction, stationId]);
+
+  useEffect(() => {
+    if (patternId && !patterns.some((pattern) => pattern.id === patternId)) setPatternId(null);
+  }, [patterns, patternId]);
+
+  const chooseStation = useCallback((nextId: string | null) => {
+    setStationId(nextId);
+    try {
+      if (nextId) localStorage.setItem(STATION_STORAGE_KEY, nextId);
+    } catch {
+      // Persistence is optional.
+    }
   }, []);
 
-  // Reposition only when the selection changes; minute ticks must not move the viewport.
+  // A cross-link from a departure row sets every control at once.
   useEffect(() => {
-    const element = scrollerRef.current;
-    if (!element) return;
-    const index = date === now.date && services.length > 0 ? relevantServiceIndex(services, now.minute) : 0;
-    element.scrollTop = Math.max(0, index * ROW_HEIGHT - 80);
-    setScrollTop(element.scrollTop);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line?.id, date, direction?.id]);
+    if (!focus || !data) return;
+    if (!scopeLineId) setLocalLineId(focus.lineId);
+    setDirectionId(focus.directionId);
+    setStationId(focus.stationId);
+    setPatternId(null);
+    // A cross-link is about one station, and the station list is where the
+    // linked service gets highlighted.
+    setViewChoice("station");
+    setDate(now.date);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.requestedAt]);
 
   if (loading) return <PanelMessage icon={<TrainFront />} title="Loading daily timetable…" />;
   if (error || !data) {
-    return <PanelMessage icon={<AlertTriangle />} title="Timetable unavailable" detail={error?.message ?? "The scheduled data file could not be loaded."} />;
+    return (
+      <PanelMessage
+        icon={<AlertTriangle />}
+        title="Timetable unavailable"
+        detail={error?.message ?? "The scheduled data file could not be loaded."}
+      />
+    );
   }
   if (data.lines.length === 0 || !line) {
     return <PanelMessage icon={<AlertTriangle />} title="No timetable lines available" detail="The latest generation did not contain usable services." />;
@@ -122,57 +159,91 @@ export const LineTimetable = memo(function LineTimetable({ data, loading, error 
   const nearestDate = data.availableDates[0];
   const staleMs = nowTimestamp - Date.parse(data.generatedAtUtc);
   const stale = Number.isFinite(staleMs) && staleMs > 36 * 60 * 60_000;
-  const visibleStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN * 2;
-  const visibleEnd = Math.min(services.length, visibleStart + visibleCount);
-  const visibleServices = services.slice(visibleStart, visibleEnd);
 
-  const chooseLine = (nextLineId: string) => {
-    setLineId(nextLineId);
-    try {
-      localStorage.setItem(LINE_STORAGE_KEY, nextLineId);
-    } catch {
-      // Persistence is optional.
-    }
-  };
+  const lineItems: SelectItem[] = data.lines.map((candidate) => ({ id: candidate.id, label: candidate.name, color: candidate.color }));
+  const stationItems: SelectItem[] = (direction?.stationIds ?? []).map((id, index) => ({
+    id,
+    label: direction?.stationNames[index] ?? id,
+  }));
 
-  // The title and subtitle live in the enclosing section card, so this renders
-  // only its own controls and the virtualized grid.
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-border pb-3">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-          <label className="min-w-0">
-            <span className="sr-only">Metro line</span>
-            <span className="relative block">
-              <span className="pointer-events-none absolute top-1/2 left-2.5 size-2.5 -translate-y-1/2 rounded-[3px]" style={{ backgroundColor: line.color }} />
-              <select value={line.id} onChange={(event) => chooseLine(event.target.value)} className="h-9 w-full appearance-none rounded-md border border-input bg-background pr-7 pl-7 text-xs font-semibold">
-                {data.lines.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            </span>
-          </label>
+      <header className="shrink-0 space-y-2 border-b border-border pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {scopeLineId ? (
+            <ScopeChip label={`${line.name} line`} color={line.color} onClear={onClearScope} />
+          ) : (
+            <SearchableSelect
+              items={lineItems}
+              value={line.id}
+              onChange={(next) => next && setLocalLineId(next)}
+              placeholder="Choose a line"
+              label="Metro line"
+              size="sm"
+              className="w-[10rem]"
+            />
+          )}
+
           <label className="relative">
             <span className="sr-only">Service date</span>
             <CalendarDays className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <select value={date} onChange={(event) => setDate(event.target.value)} className="type-numeric h-9 appearance-none rounded-md border border-input bg-background pr-7 pl-7 text-xs">
+            <select
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              className="type-numeric h-8 appearance-none rounded-md border border-input bg-background pr-7 pl-7 text-xs"
+            >
               {!dateAvailable && date && <option value={date}>{formatDate(date)} unavailable</option>}
-              {data.availableDates.map((candidate) => <option key={candidate} value={candidate}>{formatDate(candidate)}</option>)}
+              {data.availableDates.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {formatDate(candidate)}
+                </option>
+              ))}
             </select>
             <ChevronDown className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           </label>
+
+          {/* The matrix is a data table, which WCAG 1.4.10 excepts from reflow.
+              That permits a horizontally scrolling table on a wide screen; it
+              does not make one a reasonable default on a phone. */}
+          <div className="ml-auto hidden items-center gap-1 lg:flex" role="group" aria-label="Timetable layout">
+            <ViewToggle current={view} value="station" onSelect={setViewChoice} icon={List} label="By station" />
+            <ViewToggle current={view} value="matrix" onSelect={setViewChoice} icon={LayoutGrid} label="Full grid" />
+          </div>
         </div>
 
-        <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label="Direction">
+        {/* A radio group, not a tablist: these buttons select a value, they do
+            not reveal one of several panels, and the old markup declared
+            role="tablist" without any of the tab semantics that implies. */}
+        <div
+          className="flex gap-1 overflow-x-auto pb-0.5"
+          role="radiogroup"
+          aria-label="Direction"
+          onKeyDown={(event) => {
+            const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1
+              : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1
+                : 0;
+            if (step === 0) return;
+            event.preventDefault();
+            const ids = line.directions.map((candidate) => candidate.id);
+            const current = ids.indexOf(direction?.id ?? ids[0]);
+            const next = ids[(current + step + ids.length) % ids.length];
+            setDirectionId(next);
+            event.currentTarget.querySelector<HTMLButtonElement>(`[data-direction="${next}"]`)?.focus();
+          }}
+        >
           {line.directions.map((candidate) => (
             <button
               key={candidate.id}
               type="button"
-              role="tab"
-              aria-selected={candidate.id === direction?.id}
+              role="radio"
+              data-direction={candidate.id}
+              aria-checked={candidate.id === direction?.id}
+              // Roving tabindex: a radio group is one stop in the tab order,
+              // and the arrow keys move within it.
+              tabIndex={candidate.id === direction?.id ? 0 : -1}
               onClick={() => setDirectionId(candidate.id)}
               className={cn(
-                "min-h-9 min-w-0 flex-1 rounded-md border px-2 py-1.5 text-[11px] leading-tight font-medium transition-colors",
+                "min-h-9 min-w-0 flex-1 rounded-md border px-2 py-1.5 text-2xs leading-tight font-medium transition-colors",
                 candidate.id === direction?.id ? "border-foreground/30 bg-foreground text-background" : "border-border bg-background hover:bg-accent",
               )}
             >
@@ -181,9 +252,26 @@ export const LineTimetable = memo(function LineTimetable({ data, loading, error 
           ))}
         </div>
 
+        {view === "station" && direction && (
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchableSelect
+              items={stationItems}
+              value={stationId}
+              onChange={chooseStation}
+              placeholder="Choose a station"
+              label="Station"
+              size="sm"
+              className="w-[11rem]"
+            />
+            <PatternPicker patterns={patterns} value={patternId} onChange={setPatternId} />
+          </div>
+        )}
+
         {(data.source.partial || stale) && (
-          <p className="mt-2 rounded-md border border-warning-border/60 bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
-            {data.source.partial ? "Some timetable data was unavailable during generation." : "This timetable is older than expected; verify service times with PTV."}
+          <p className="rounded-md border border-warning-border/60 bg-warning/10 px-2 py-1.5 text-2xs leading-snug text-warning">
+            {data.source.partial
+              ? "Some timetable data was unavailable during generation."
+              : "This timetable is older than expected; verify service times with PTV."}
           </p>
         )}
       </header>
@@ -192,66 +280,379 @@ export const LineTimetable = memo(function LineTimetable({ data, loading, error 
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 text-center">
           <CalendarDays className="mb-2 size-5 text-muted-foreground" />
           <p className="text-sm font-semibold">No timetable for {formatDate(date)}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">The published artifact does not include this Melbourne date.</p>
-          {nearestDate && <button type="button" onClick={() => setDate(nearestDate)} className="mt-3 rounded-md border border-border bg-background px-3 py-1.5 text-[11px] font-semibold hover:bg-accent">Use {formatDate(nearestDate)}</button>}
+          <p className="mt-1 text-2xs text-muted-foreground">The published artifact does not include this Melbourne date.</p>
+          {nearestDate && (
+            <button
+              type="button"
+              onClick={() => setDate(nearestDate)}
+              className="mt-3 min-h-11 rounded-md border border-border bg-background px-3 text-2xs font-semibold hover:bg-accent"
+            >
+              Use {formatDate(nearestDate)}
+            </button>
+          )}
         </div>
       ) : !direction ? (
         <PanelMessage icon={<TrainFront />} title="No direction available" />
-      ) : services.length === 0 ? (
-        <PanelMessage icon={<TrainFront />} title="No scheduled services" detail={`No ${line.name} services are published for ${formatDate(date)} in this direction.`} />
+      ) : view === "matrix" ? (
+        <MatrixView line={line} direction={direction} services={services} date={date} />
       ) : (
-        <div
-          ref={scrollerRef}
-          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-          className="thin-scrollbar min-h-0 flex-1 overflow-auto"
-          tabIndex={0}
-          aria-label={`${line.name} ${direction.label} timetable for ${formatDate(date)}`}
-        >
-          <table className="type-numeric w-max min-w-full border-separate border-spacing-0 text-[11px]">
-            <thead className="sticky top-0 z-20">
-              <tr>
-                <th scope="col" className="sticky left-0 z-30 min-w-[8.5rem] border-r border-b border-border bg-muted px-2 py-2 text-left font-semibold">Service</th>
-                {direction.stationNames.map((station, index) => (
-                  <th key={`${direction.stationIds[index]}-${index}`} scope="col" className="h-16 w-[5.5rem] min-w-[5.5rem] border-r border-b border-border bg-muted px-1 py-1 text-center align-bottom font-semibold">
-                    <span className="inline-block max-w-[5rem] leading-tight">{station}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleStart > 0 && <tr aria-hidden="true"><td colSpan={direction.stationIds.length + 1} style={{ height: visibleStart * ROW_HEIGHT }} /></tr>}
-              {visibleServices.map((service, localIndex) => {
-                const index = visibleStart + localIndex;
-                const highlighted = index === highlightedIndex;
-                return (
-                  <tr key={service.id} className={cn("h-11", highlighted && "bg-primary/10")} aria-current={highlighted ? "time" : undefined}>
-                    <th scope="row" className={cn("sticky left-0 z-10 max-w-[8.5rem] border-r border-b border-border px-2 py-1.5 text-left", highlighted ? "bg-accent" : "bg-card")}>
-                      <span className="type-data block font-medium">{formatTime(firstTime(service))}</span>
-                      <span className="block truncate text-[11px] font-normal text-muted-foreground" title={`${service.origin} to ${service.destination}`}>to {service.destination}</span>
-                    </th>
-                    {service.times.map((time, stationIndex) => (
-                      <td key={stationIndex} className="type-data border-r border-b border-border/70 px-1 py-1 text-center" aria-label={time === null ? `${direction.stationNames[stationIndex]}: service does not stop` : `${direction.stationNames[stationIndex]}: ${fullTimeLabel(date, time)}`}>
-                        {time === null ? <span className="text-muted-foreground/60">—</span> : formatTime(time)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-              {visibleEnd < services.length && <tr aria-hidden="true"><td colSpan={direction.stationIds.length + 1} style={{ height: (services.length - visibleEnd) * ROW_HEIGHT }} /></tr>}
-            </tbody>
-          </table>
-        </div>
+        <StationView
+          key={`${line.id}:${direction.id}:${stationId}:${date}:${patternId ?? "all"}`}
+          direction={direction}
+          services={services}
+          stationId={stationId}
+          patternId={patternId}
+          lineName={line.name}
+          date={date}
+          isToday={date === now.date}
+          nowMinute={now.minute}
+          focusServiceId={focus?.serviceId ?? null}
+          activePatternLabel={activePattern?.label}
+        />
       )}
     </div>
   );
 });
+
+function ViewToggle({
+  current,
+  value,
+  onSelect,
+  icon: Icon,
+  label,
+}: {
+  current: string;
+  value: "station" | "matrix";
+  onSelect: (value: "station" | "matrix") => void;
+  icon: typeof List;
+  label: string;
+}) {
+  const active = current === value;
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => onSelect(value)}
+      className={cn(
+        "flex min-h-8 items-center gap-1.5 rounded-md border px-2 text-2xs font-medium transition-colors",
+        active ? "border-foreground/30 bg-foreground text-background" : "border-border bg-background hover:bg-accent",
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+      {label}
+    </button>
+  );
+}
+
+function PatternPicker({
+  patterns,
+  value,
+  onChange,
+}: {
+  patterns: { id: string; label: string; serviceCount: number }[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  // One pattern means there is nothing to choose between, and a picker with a
+  // single option only suggests the list is broken.
+  if (patterns.length < 2) return null;
+  const items: SelectItem[] = patterns.map((pattern) => ({
+    id: pattern.id,
+    label: `${pattern.label} (${pattern.serviceCount})`,
+  }));
+  return (
+    <SearchableSelect
+      items={items}
+      value={value}
+      onChange={onChange}
+      placeholder="All stopping patterns"
+      emptyOption="All stopping patterns"
+      label="Stopping pattern"
+      size="sm"
+      className="w-[13rem]"
+    />
+  );
+}
+
+interface StationDeparture {
+  service: TimetableService;
+  minutes: number;
+}
+
+/**
+ * The primary view: one station's departures as a single column of times.
+ *
+ * This also dissolves the express-labelling problem the matrix has. A service
+ * that skips your station is simply absent from your list, which needs no
+ * annotation and cannot be misread.
+ */
+function StationView({
+  direction,
+  services,
+  stationId,
+  patternId,
+  lineName,
+  date,
+  isToday,
+  nowMinute,
+  focusServiceId,
+  activePatternLabel,
+}: {
+  direction: TimetableDirection;
+  services: TimetableService[];
+  stationId: string | null;
+  patternId: string | null;
+  lineName: string;
+  date: string;
+  isToday: boolean;
+  nowMinute: number;
+  focusServiceId: string | null;
+  activePatternLabel?: string;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const nowAnchorRef = useRef<HTMLLIElement>(null);
+
+  const column = stationId ? direction.stationIds.indexOf(stationId) : -1;
+  const stationName = column >= 0 ? direction.stationNames[column] : "";
+
+  const departures = useMemo<StationDeparture[]>(() => {
+    if (column < 0) return [];
+    const result: StationDeparture[] = [];
+    for (const service of services) {
+      if (patternId && service.patternId !== patternId) continue;
+      const minutes = service.times[column];
+      if (minutes === null) continue;
+      result.push({ service, minutes });
+    }
+    return result.sort((a, b) => a.minutes - b.minutes || a.service.id.localeCompare(b.service.id));
+  }, [services, column, patternId]);
+
+  /** Index of the first departure at or after now; where the "now" line goes. */
+  const nowIndex = useMemo(
+    () => (isToday ? departures.findIndex((departure) => departure.minutes >= nowMinute) : -1),
+    [departures, isToday, nowMinute],
+  );
+
+  const jumpToNow = useCallback(() => {
+    nowAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  // Positioned once for this selection, then left alone. Re-anchoring on every
+  // minute tick would yank the list out from under anyone reading it — which is
+  // why the jump control is persistent rather than automatic.
+  useEffect(() => {
+    const anchor = nowAnchorRef.current;
+    const scroller = scrollerRef.current;
+    if (!anchor || !scroller) return;
+    scroller.scrollTop = Math.max(0, anchor.offsetTop - scroller.clientHeight / 3);
+  }, []);
+
+  if (column < 0) return <PanelMessage icon={<TrainFront />} title="Choose a station" detail="Pick a station to see its departures." />;
+
+  if (departures.length === 0) {
+    return (
+      <PanelMessage
+        icon={<TrainFront />}
+        title={`No ${lineName} departures from ${stationName}`}
+        detail={
+          activePatternLabel
+            ? `No "${activePatternLabel}" services call here on ${formatDate(date)}. Try all stopping patterns.`
+            : `Nothing is published for ${formatDate(date)} in this direction.`
+        }
+      />
+    );
+  }
+
+  let lastHour = -1;
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <CountAnnouncer
+        message={`${departures.length} ${departures.length === 1 ? "departure" : "departures"} from ${stationName}, ${direction.label}, ${formatDate(date)}${activePatternLabel ? `, ${activePatternLabel}` : ""}`}
+      />
+      <div
+        ref={scrollerRef}
+        className="thin-scrollbar min-h-0 flex-1 overflow-y-auto"
+        // Focusable so the list can be scrolled without a pointer, and labelled
+        // as a group so that stop is announced as something rather than as a
+        // bare focus move.
+        tabIndex={0}
+        role="group"
+        aria-label={`${lineName} departures from ${stationName}, ${direction.label}, ${formatDate(date)}`}
+      >
+        <ul className="pb-16">
+          {departures.map((departure, index) => {
+            const hour = Math.floor(departure.minutes / 60);
+            const startsHour = hour !== lastHour;
+            lastHour = hour;
+            const isNext = index === nowIndex;
+            const isPast = isToday && departure.minutes < nowMinute;
+            const isFocused = focusServiceId !== null && departure.service.id === focusServiceId;
+
+            return (
+              <li key={departure.service.id} ref={isNext ? nowAnchorRef : undefined}>
+                {startsHour && (
+                  <p className="type-label sticky top-0 z-10 border-y border-border bg-muted px-3 py-1 text-muted-foreground">
+                    {formatHour(hour)}
+                  </p>
+                )}
+                {isNext && (
+                  <p className="flex items-center gap-2 px-3 pt-2 text-2xs font-semibold text-brand">
+                    <span className="h-px flex-1 bg-brand/40" aria-hidden="true" />
+                    Now
+                    <span className="h-px flex-1 bg-brand/40" aria-hidden="true" />
+                  </p>
+                )}
+                <div
+                  className={cn(
+                    "flex min-h-11 items-center gap-3 border-b border-border/60 px-3 py-2",
+                    isPast && "opacity-45",
+                    isFocused && "bg-primary/10",
+                  )}
+                  aria-current={isFocused ? "true" : undefined}
+                >
+                  <span className="type-data w-16 shrink-0 text-sm font-semibold">{formatTime(departure.minutes)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium">{departure.service.destination}</span>
+                    <span className="block truncate text-2xs text-muted-foreground">from {departure.service.origin}</span>
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {nowIndex >= 0 && (
+        <button
+          type="button"
+          onClick={jumpToNow}
+          className="absolute right-3 bottom-3 flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-card px-3.5 text-2xs font-semibold shadow-lg transition-colors hover:bg-accent"
+        >
+          <ArrowDownToLine className="size-3.5" aria-hidden="true" />
+          Jump to now
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The full service-by-station grid, kept for wide screens. */
+function MatrixView({
+  line,
+  direction,
+  services,
+  date,
+}: {
+  line: { name: string };
+  direction: TimetableDirection;
+  services: TimetableService[];
+  date: string;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(500);
+
+  useEffect(() => {
+    const element = scrollerRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setViewportHeight(element.clientHeight));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  if (services.length === 0) {
+    return (
+      <PanelMessage
+        icon={<TrainFront />}
+        title="No scheduled services"
+        detail={`No ${line.name} services are published for ${formatDate(date)} in this direction.`}
+      />
+    );
+  }
+
+  const visibleStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN * 2;
+  const visibleEnd = Math.min(services.length, visibleStart + visibleCount);
+  const visibleServices = services.slice(visibleStart, visibleEnd);
+
+  return (
+    <div
+      ref={scrollerRef}
+      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      className="thin-scrollbar min-h-0 flex-1 overflow-auto"
+      tabIndex={0}
+      role="group"
+      aria-label={`${line.name} line timetable grid, ${direction.label}, ${formatDate(date)}`}
+    >
+      <table className="type-numeric w-max min-w-full border-separate border-spacing-0 text-2xs">
+        <caption className="sr-only">
+          {line.name} line, {direction.label}, {formatDate(date)}. Departure times in Melbourne time; each row is one service and
+          each column one station.
+        </caption>
+        <thead className="sticky top-0 z-20">
+          <tr>
+            <th scope="col" className="sticky left-0 z-30 min-w-[8.5rem] border-r border-b border-border bg-muted px-2 py-2 text-left font-semibold">
+              Service
+            </th>
+            {direction.stationNames.map((station, index) => (
+              <th
+                key={`${direction.stationIds[index]}-${index}`}
+                scope="col"
+                className="h-16 w-[5.5rem] min-w-[5.5rem] border-r border-b border-border bg-muted px-1 py-1 text-center align-bottom font-semibold"
+              >
+                <span className="inline-block max-w-[5rem] leading-tight">{station}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {visibleStart > 0 && (
+            <tr aria-hidden="true">
+              <td colSpan={direction.stationIds.length + 1} style={{ height: visibleStart * ROW_HEIGHT }} />
+            </tr>
+          )}
+          {visibleServices.map((service) => (
+            <tr key={service.id} className="h-11">
+              <th scope="row" className="sticky left-0 z-10 max-w-[8.5rem] border-r border-b border-border bg-card px-2 py-1.5 text-left">
+                <span className="type-data block font-medium">{formatTime(firstTime(service))}</span>
+                <span className="block truncate text-2xs font-normal text-muted-foreground">to {service.destination}</span>
+              </th>
+              {/* No aria-label on the cells: several screen readers treat it as a
+                  replacement for the cell's content rather than an addition, so
+                  the time itself would stop being announced. The row and column
+                  headers already supply the context. */}
+              {service.times.map((time, stationIndex) => (
+                <td key={stationIndex} className="type-data border-r border-b border-border/70 px-1 py-1 text-center">
+                  {time === null ? (
+                    <span className="text-muted-foreground/60">
+                      <span aria-hidden="true">—</span>
+                      <span className="sr-only">Does not stop</span>
+                    </span>
+                  ) : (
+                    formatTime(time)
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {visibleEnd < services.length && (
+            <tr aria-hidden="true">
+              <td colSpan={direction.stationIds.length + 1} style={{ height: (services.length - visibleEnd) * ROW_HEIGHT }} />
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function PanelMessage({ icon, title, detail }: { icon: React.ReactNode; title: string; detail?: string }) {
   return (
     <div className="flex h-full min-h-[18rem] flex-col items-center justify-center px-5 text-center">
       <span className="mb-2 text-muted-foreground [&>svg]:size-5">{icon}</span>
       <p className="type-heading text-sm">{title}</p>
-      {detail && <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{detail}</p>}
+      {detail && <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{detail}</p>}
     </div>
   );
 }
@@ -265,17 +666,17 @@ function formatTime(minutes: number): string {
   return `${hour % 12 || 12}:${String(minute).padStart(2, "0")}${suffix}`;
 }
 
+/** Hour headings run past 24 because GTFS keeps after-midnight calls on their own service day. */
+function formatHour(hour: number): string {
+  const wrapped = hour % 24;
+  const suffix = wrapped >= 12 ? "pm" : "am";
+  const label = `${wrapped % 12 || 12} ${suffix}`;
+  return hour >= 24 ? `${label} (next day)` : label;
+}
+
 function formatDate(date: string): string {
   const parsed = new Date(`${date}T12:00:00Z`);
   return Number.isNaN(parsed.getTime())
     ? date
     : new Intl.DateTimeFormat("en-AU", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(parsed);
-}
-
-function fullTimeLabel(serviceDate: string, minutes: number): string {
-  const dayOffset = Math.floor(minutes / 1440);
-  const date = new Date(`${serviceDate}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + dayOffset);
-  const dateLabel = new Intl.DateTimeFormat("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(date);
-  return `${formatTime(minutes)}, ${dateLabel} Melbourne time`;
 }
