@@ -102,5 +102,11 @@ export const MapView = memo(function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staticData]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  // Sized rather than positioned, deliberately. MapLibre stamps
+  // `.maplibregl-map { position: relative }` onto this element, which is the
+  // same specificity as Tailwind's `.absolute`, so whichever stylesheet loads
+  // second wins. Since maplibre-gl.css now travels in the lazy map chunk it
+  // always loads last, and `absolute inset-0` silently collapsed the container
+  // to zero height. MapLibre declares no height rule, so this cannot be beaten.
+  return <div ref={containerRef} className="size-full" />;
 });
