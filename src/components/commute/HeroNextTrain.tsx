@@ -1,7 +1,7 @@
 import { forwardRef } from "react";
 import { NumberTicker } from "../ui/number-ticker";
 import { BorderBeam } from "../ui/border-beam";
-import { departureStatus, spokenEta, type DepartureRow } from "../../data/departures";
+import { arrivalForDestination, DELAYED_THRESHOLD_MIN, departureStatus, spokenEta, type DepartureRow } from "../../data/departures";
 import { cn } from "../../lib/utils";
 
 const DUE_SOON_MS = 2 * 60_000;
@@ -43,8 +43,8 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
   const scheduled = clockTime(row.scheduledTimeUtc);
   const expected = row.estimatedTimeUtc ? clockTime(row.estimatedTimeUtc) : null;
   const departTime = clockTime(row.timeUtc);
-  const arriveAt = arrivalCall(row, destinationStationId);
-  const arriveTime = arriveAt ? clockTime(arriveAt) : null;
+  const arrival = arrivalForDestination(row.onwardStops, destinationStationId);
+  const arriveTime = arrival ? clockTime(arrival.timeUtc) : null;
   const issued = ticketStamp(now);
   const isRetimed = expected !== null && expected !== scheduled;
   const remainingMs = Date.parse(row.timeUtc) - now;
@@ -126,17 +126,19 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
             )}
             <span className="text-sm">{scheduled}</span>
             {isRetimed && <span className="text-xs text-warning">expected {expected}</span>}
-            <span
-              className={cn(
-                "text-xs uppercase tracking-widest",
-                status.tone === "success" && "text-success",
-                status.tone === "warning" && "text-warning",
-                status.tone === "destructive" && "text-destructive",
-                status.tone === "muted" && "text-muted-foreground",
-              )}
-            >
-              {status.label.toLowerCase()}
-            </span>
+            {(!isRetimed || (row.delayMin !== null && row.delayMin >= DELAYED_THRESHOLD_MIN)) && (
+              <span
+                className={cn(
+                  "text-xs uppercase tracking-widest",
+                  status.tone === "success" && "text-success",
+                  status.tone === "warning" && "text-warning",
+                  status.tone === "destructive" && "text-destructive",
+                  status.tone === "muted" && "text-muted-foreground",
+                )}
+              >
+                {status.label.toLowerCase()}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -152,6 +154,9 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
           <p className="type-label text-muted-foreground">Arrive</p>
           <p className="type-heading mt-1 truncate text-lg sm:text-2xl">{destinationName}</p>
           <p className="mt-1 font-mono text-sm tabular-nums">{arriveTime ?? "—"}</p>
+          {arrival?.viaStationName && (
+            <p className="mt-0.5 font-mono text-2xs text-muted-foreground">via {arrival.viaStationName}</p>
+          )}
         </div>
       </div>
 
@@ -168,14 +173,6 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
     </article>
   );
 });
-
-function arrivalCall(row: DepartureRow, destinationStationId?: string | null): string | null {
-  const stop = destinationStationId
-    ? row.onwardStops.find((onward) => onward.stationId === destinationStationId && !onward.isSkipped)
-    : row.onwardStops.filter((onward) => !onward.isSkipped).at(-1);
-  if (!stop) return null;
-  return stop.estimatedTimeUtc ?? stop.scheduledTimeUtc;
-}
 
 function ticketStamp(now: number): string {
   return new Date(now).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
