@@ -13,7 +13,12 @@ export interface Freshness {
   level: FreshnessLevel;
   /** Short label for the status line. */
   label: string;
-  /** The consequence, shown when the board is degraded. Absent when everything is fine. */
+  /**
+   * A consequence serious enough to warrant a banner on the board itself.
+   * Only `schedule-only` sets this: there is no real-time layer at all, so
+   * cancellations are invisible rather than merely late. Ordinary staleness
+   * is left to the masthead's status dot.
+   */
   detail?: string;
   tone: "success" | "muted" | "warning";
 }
@@ -49,11 +54,14 @@ export function describeFreshness(
   const ageMs = now - measuredAt;
   const clock = new Date(measuredAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
+  // No `detail`, deliberately. A banner telling the rider to go and check
+  // another app was a heavy response to what is usually a couple of missed
+  // refresh runs, and it read as though the app were broken. The amber dot in
+  // the masthead carries the same fact in the label below without the alarm.
   if (ageMs > LIVE_DATA_STALE_AFTER_MS) {
     return {
       level: "stale",
       label: `Live updates paused since ${clock}`,
-      detail: "These times are no longer being updated. Check the PTV app before you travel.",
       tone: "warning",
     };
   }

@@ -301,9 +301,11 @@ export function LiveDeparturesSection({
 
         <CountAnnouncer message={announcement} />
 
-        {/* The status line itself now lives in the masthead, because it is true
-            of the map and the alerts too. What stays here is the consequence,
-            which is only actionable next to the times it applies to. */}
+        {/* The status line itself lives in the masthead, because it is true of
+            the map and the alerts too. Only the schedule-only case still earns
+            a banner here: with no real-time layer, a cancelled service is
+            indistinguishable from a running one, and that is worth interrupting
+            for in a way that merely aging times are not. */}
         {freshness.detail && (
           <p className="flex items-start gap-2.5 rounded-lg border border-warning-border/60 bg-warning-surface px-3 py-2.5 text-xs text-warning-foreground">
             <AlertTriangle className="mt-px size-4 shrink-0" aria-hidden="true" />
