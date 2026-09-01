@@ -30,7 +30,6 @@ interface CommuteHomeProps {
   commute: CommuteController;
   criticalIncident: AggregatedDisruption | null;
   isInitialising: boolean;
-  isScheduleOnly: boolean;
   freshnessDetail?: string;
   trainsRunning: number;
   linesActive: number;
@@ -45,7 +44,6 @@ export function CommuteHome({
   commute,
   criticalIncident,
   isInitialising,
-  isScheduleOnly,
   freshnessDetail,
   trainsRunning,
   linesActive,
@@ -70,9 +68,8 @@ export function CommuteHome({
     if (!origin) return [];
     return departureRowsForStation(origin, runs, now, {
       destinationStationId: destination?.id,
-      lineId: commute.lineId,
     });
-  }, [origin, destination, runs, now, commute.lineId]);
+  }, [origin, destination, runs, now]);
 
   const hero = rows[0];
   const later = rows.slice(1, 1 + LATER_COUNT);
@@ -133,7 +130,6 @@ export function CommuteHome({
                   lineColor={lineColorById.get(hero.lineId) ?? "#152C6B"}
                   pattern={describeStoppingPattern(hero, stationNamesById, linesById.get(hero.lineId), hero.stationId)}
                   nextAlternative={nextAlternative}
-                  isScheduleOnly={isScheduleOnly}
                 />
                 <div className="flex items-center justify-between gap-2 sm:gap-4">
                   <button
