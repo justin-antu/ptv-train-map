@@ -120,7 +120,7 @@ export function CommuteHome({
                 onClearDestination={commute.reset}
                 onOpenTimetable={() => navigate("timetable")}
               />
-            ) : hero ? (
+            ) : hero && origin ? (
               <>
                 <HeroNextTrain
                   ref={cardRef}
