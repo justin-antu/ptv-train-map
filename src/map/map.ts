@@ -13,22 +13,20 @@ import type { NetworkStaticData } from "../shared/types";
 const TILE_KEY_PARAM = import.meta.env.VITE_CARTO_BASEMAP_KEY ? `?key=${import.meta.env.VITE_CARTO_BASEMAP_KEY}` : "";
 
 /**
- * CARTO Positron raster style. The basemap remains light in both UI themes;
- * dark mode applies only to the surrounding interface. Avoiding
- * `map.setStyle()` prevents custom source and layer teardown during theme
- * changes and eliminates a full map reload.
+ * CARTO Positron / Dark Matter raster styles. The map remounts on theme
+ * change so custom line and station layers are rebuilt rather than calling
+ * `map.setStyle()`.
  */
-function buildPositronStyle(): StyleSpecification {
-  const sourceId = "carto-light_all";
+function buildCartoStyle(variant: "light_all" | "dark_all"): StyleSpecification {
+  const sourceId = `carto-${variant}`;
   return {
     version: 8,
     glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
     sources: {
       [sourceId]: {
         type: "raster",
-        // CARTO distributes tile requests across four subdomains.
         tiles: ["a", "b", "c", "d"].map(
-          (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png${TILE_KEY_PARAM}`,
+          (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}.png${TILE_KEY_PARAM}`,
         ),
         tileSize: 256,
         attribution:
@@ -37,7 +35,7 @@ function buildPositronStyle(): StyleSpecification {
     },
     layers: [
       {
-        id: "carto-light_all-tiles",
+        id: `${sourceId}-tiles`,
         type: "raster",
         source: sourceId,
         minzoom: 0,
@@ -47,17 +45,18 @@ function buildPositronStyle(): StyleSpecification {
   };
 }
 
-const POSITRON_STYLE = buildPositronStyle();
+const POSITRON_STYLE = buildCartoStyle("light_all");
+const DARK_MATTER_STYLE = buildCartoStyle("dark_all");
+const STATION_PAINT_DARK = { circleFill: "#f4f1ea" };
 
 const LINES_SOURCE_ID = "network-lines";
 const STATIONS_SOURCE_ID = "network-stations";
-const LINE_CASING_LAYER_ID = "network-line-casing";
-const LINE_LAYER_ID = "network-line";
+const LINE_CONTEXT_LAYER_ID = "network-line-context";
+const LINE_FOCUS_GLOW_LAYER_ID = "network-line-focus-glow";
+const LINE_FOCUS_LAYER_ID = "network-line-focus";
 const STATIONS_CIRCLE_LAYER_ID = "network-stations-circle";
-const STATIONS_LABEL_LAYER_ID = "network-stations-label";
 
-/** Station dot/label/line-casing colours, chosen for contrast against the (permanently light) Positron basemap. */
-const STATION_PAINT = { circleFill: "#ffffff", circleStroke: "#333333", lineCasing: "#ffffff", textColor: "#1a1a1a", textHalo: "#ffffff" };
+const STATION_PAINT = { circleFill: "#1a1a1a" };
 
 function computeBounds(staticData: NetworkStaticData): maplibregl.LngLatBoundsLike {
   let minLon = Infinity;
@@ -78,11 +77,15 @@ function computeBounds(staticData: NetworkStaticData): maplibregl.LngLatBoundsLi
   ];
 }
 
-/** Creates the map, permanently on the Positron basemap. Called exactly once per `MapView` mount. */
-export function createMap(container: HTMLElement, staticData: NetworkStaticData): maplibregl.Map {
+/** Creates the map. Dark UI uses CARTO Dark Matter so the map matches the night platform. */
+export function createMap(
+  container: HTMLElement,
+  staticData: NetworkStaticData,
+  theme: "light" | "dark" = "light",
+): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
-    style: POSITRON_STYLE,
+    style: theme === "dark" ? DARK_MATTER_STYLE : POSITRON_STYLE,
     bounds: computeBounds(staticData),
     fitBoundsOptions: { padding: 32 },
     attributionControl: { compact: true },
@@ -96,22 +99,29 @@ export function createMap(container: HTMLElement, staticData: NetworkStaticData)
 }
 
 /**
- * Draws every in-scope line's route + a single deduplicated set of station
- * markers after the map style loads. The operation is idempotent per map.
- *
- * Shared corridors are rendered as overlapping colour-coded lines rather than
- * merged track infrastructure.
+ * Draws the network as a thin colour diagram, then optionally a single
+ * focused line with a restrained glow. Shared inner-city corridors stay
+ * readable because only the focus line blooms — the rest stay flat.
  */
-export function addLineAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
-  if (map.isStyleLoaded()) {
-    drawLinesAndStations(map, staticData);
-  } else {
-    // The fixed map style emits one load event per map instance.
-    map.on("load", () => drawLinesAndStations(map, staticData));
-  }
+export function addLineAndStations(
+  map: maplibregl.Map,
+  staticData: NetworkStaticData,
+  theme: "light" | "dark" = "light",
+  focusedLineIds: ReadonlySet<string> = new Set(),
+): void {
+  const draw = () => {
+    drawLinesAndStations(map, staticData, theme);
+    setFocusedLines(map, focusedLineIds);
+  };
+  if (map.isStyleLoaded()) draw();
+  else map.on("load", draw);
 }
 
-function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData): void {
+function drawLinesAndStations(
+  map: maplibregl.Map,
+  staticData: NetworkStaticData,
+  theme: "light" | "dark" = "light",
+): void {
   if (map.getSource(LINES_SOURCE_ID)) return; // Prevent duplicate sources during re-entrant calls.
 
   map.addSource(LINES_SOURCE_ID, {
@@ -125,19 +135,46 @@ function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData
       })),
     },
   });
+  const dark = theme === "dark";
+  const rasterId = dark ? "carto-dark_all-tiles" : "carto-light_all-tiles";
+  if (map.getLayer(rasterId)) {
+    map.setPaintProperty(rasterId, "raster-opacity", dark ? 0.55 : 0.72);
+    map.setPaintProperty(rasterId, "raster-saturation", dark ? -0.35 : -0.2);
+  }
+
   map.addLayer({
-    id: LINE_CASING_LAYER_ID,
+    id: LINE_CONTEXT_LAYER_ID,
     type: "line",
     source: LINES_SOURCE_ID,
     layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": STATION_PAINT.lineCasing, "line-width": 6, "line-opacity": 0.85 },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": 1.6,
+      "line-opacity": 1,
+    },
   });
   map.addLayer({
-    id: LINE_LAYER_ID,
+    id: LINE_FOCUS_GLOW_LAYER_ID,
     type: "line",
     source: LINES_SOURCE_ID,
-    layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": ["get", "color"], "line-width": 3.5 },
+    layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": dark ? 7 : 6,
+      "line-opacity": dark ? 0.38 : 0.22,
+      "line-blur": dark ? 3.5 : 2.5,
+    },
+  });
+  map.addLayer({
+    id: LINE_FOCUS_LAYER_ID,
+    type: "line",
+    source: LINES_SOURCE_ID,
+    layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": 2.25,
+      "line-opacity": 1,
+    },
   });
 
   map.addSource(STATIONS_SOURCE_ID, {
@@ -156,39 +193,39 @@ function drawLinesAndStations(map: maplibregl.Map, staticData: NetworkStaticData
     type: "circle",
     source: STATIONS_SOURCE_ID,
     paint: {
-      // Interchange stations use a larger marker.
-      "circle-radius": ["case", [">", ["get", "lineCount"], 1], 5.5, 4],
-      "circle-color": STATION_PAINT.circleFill,
-      "circle-stroke-color": STATION_PAINT.circleStroke,
-      "circle-stroke-width": 1.5,
-    },
-  });
-  map.addLayer({
-    id: STATIONS_LABEL_LAYER_ID,
-    type: "symbol",
-    source: STATIONS_SOURCE_ID,
-    minzoom: 10,
-    layout: {
-      "text-field": ["get", "name"],
-      "text-size": 11,
-      "text-offset": [0, 1.1],
-      "text-anchor": "top",
-      "text-font": ["Noto Sans Regular"],
-      "text-optional": true,
-    },
-    paint: {
-      "text-color": STATION_PAINT.textColor,
-      "text-halo-color": STATION_PAINT.textHalo,
-      "text-halo-width": 1.4,
+      "circle-radius": ["case", [">", ["get", "lineCount"], 1], 2.4, 1.8],
+      "circle-color": theme === "dark" ? STATION_PAINT_DARK.circleFill : STATION_PAINT.circleFill,
+      "circle-stroke-width": 0,
     },
   });
 }
 
-/** Shows/hides line layers based on the given set of visible line ids (see the legend panel). */
-export function setVisibleLines(map: maplibregl.Map, visibleLineIds: ReadonlySet<string>): void {
-  const filter: maplibregl.FilterSpecification = ["in", ["get", "lineId"], ["literal", [...visibleLineIds]]];
-  if (map.getLayer(LINE_LAYER_ID)) map.setFilter(LINE_LAYER_ID, filter);
-  if (map.getLayer(LINE_CASING_LAYER_ID)) map.setFilter(LINE_CASING_LAYER_ID, filter);
+/**
+ * Lights one commute line. Other routes stay as a flat diagram so shared
+ * corridors do not bloom into a mash-up. An empty set lights nothing.
+ */
+export function setFocusedLines(map: maplibregl.Map, focusedLineIds: ReadonlySet<string>): void {
+  const hasFocus = focusedLineIds.size > 0;
+  const focusFilter: maplibregl.FilterSpecification = hasFocus
+    ? ["in", ["get", "lineId"], ["literal", [...focusedLineIds]]]
+    : ["==", ["get", "lineId"], ""];
+  const contextFilter: maplibregl.FilterSpecification | null = hasFocus
+    ? ["!", ["in", ["get", "lineId"], ["literal", [...focusedLineIds]]]]
+    : null;
+
+  if (map.getLayer(LINE_CONTEXT_LAYER_ID)) {
+    map.setFilter(LINE_CONTEXT_LAYER_ID, contextFilter);
+    map.setPaintProperty(LINE_CONTEXT_LAYER_ID, "line-opacity", hasFocus ? 0.16 : 1);
+    map.setPaintProperty(LINE_CONTEXT_LAYER_ID, "line-width", hasFocus ? 1.25 : 1.6);
+  }
+  if (map.getLayer(LINE_FOCUS_GLOW_LAYER_ID)) {
+    map.setFilter(LINE_FOCUS_GLOW_LAYER_ID, focusFilter);
+    map.setLayoutProperty(LINE_FOCUS_GLOW_LAYER_ID, "visibility", hasFocus ? "visible" : "none");
+  }
+  if (map.getLayer(LINE_FOCUS_LAYER_ID)) {
+    map.setFilter(LINE_FOCUS_LAYER_ID, focusFilter);
+    map.setLayoutProperty(LINE_FOCUS_LAYER_ID, "visibility", hasFocus ? "visible" : "none");
+  }
 }
 
 /** Returns the clicked station's id, or null if the given point didn't land on a station dot. */

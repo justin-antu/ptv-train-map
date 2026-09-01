@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 
 const TONE_CLASS = {
-  success: "text-success",
+  // Same green in both themes — light `--success` is a darker forest that
+  // reads dull next to the night-platform live dot.
+  success: "text-[hsl(152_55%_48%)]",
   warning: "text-warning",
   muted: "text-muted-foreground",
+  destructive: "text-destructive",
 } as const;
 
 interface LiveStatusDotProps {
   /** The freshness wording, e.g. "Live · updated just now". */
   label: string;
-  tone: "success" | "muted" | "warning";
+  tone: "success" | "muted" | "warning" | "destructive";
   trainCount: number;
 }
 
@@ -41,9 +44,8 @@ export function LiveStatusDot({ label, tone, trainCount }: LiveStatusDotProps) {
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [pinned]);
 
-  // Only a feed that is actually moving pulses. A frozen one would otherwise
-  // animate reassuringly while saying that it had stopped.
-  const isPulsing = tone !== "muted";
+  // Green pulses while we have a feed. Red pulses only after a day of silence.
+  const isPulsing = tone === "success" || tone === "destructive";
 
   return (
     <div ref={containerRef} className="group relative">
@@ -82,7 +84,7 @@ export function LiveStatusDot({ label, tone, trainCount }: LiveStatusDotProps) {
           pinned && "opacity-100",
         )}
       >
-        <p className={cn("text-2xs font-medium", tone === "warning" ? "text-warning" : "text-popover-foreground")}>
+        <p className={cn("text-2xs font-medium", tone === "destructive" ? "text-destructive" : "text-popover-foreground")}>
           {label}
         </p>
         {trainCount > 0 && <p className="text-2xs text-muted-foreground">{trainCount} trains running</p>}

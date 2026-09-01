@@ -3,85 +3,85 @@
 @tailwind utilities;
 
 :root {
-  /* One monospace family across the whole UI, matching the timetable aesthetic. */
-  --font-sans: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --background: 40 33% 95%;
+  --foreground: 30 12% 8%;
+  --card: 40 30% 93%;
+  --card-foreground: 30 12% 8%;
+  --popover: 40 33% 97%;
+  --popover-foreground: 30 12% 8%;
   --primary: 225 66% 24%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 220 20% 95%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 220 20% 95%;
-  --muted-foreground: 220 9% 42%;
-  --accent: 220 25% 93%;
-  --accent-foreground: 222 47% 11%;
+  --primary-foreground: 40 33% 96%;
+  --secondary: 36 20% 90%;
+  --secondary-foreground: 30 12% 8%;
+  --muted: 36 18% 88%;
+  --muted-foreground: 30 8% 38%;
+  --accent: 36 22% 88%;
+  --accent-foreground: 30 12% 8%;
   --brand: 225 66% 24%;
-  --brand-foreground: 210 40% 98%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 210 40% 98%;
-  --destructive-surface: 0 86% 97%;
-  --destructive-border: 0 79% 86%;
-  --border: 220 15% 88%;
-  --input: 220 15% 88%;
+  --brand-foreground: 40 33% 96%;
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 40 33% 97%;
+  --destructive-surface: 8 70% 95%;
+  --destructive-border: 4 60% 78%;
+  --border: 35 16% 80%;
+  --input: 35 16% 80%;
   --ring: 225 66% 24%;
   --warning: 32 81% 31%;
-  --warning-foreground: 32 81% 31%;
-  --warning-surface: 48 100% 96%;
-  --warning-muted: 48 96% 89%;
-  --warning-border: 46 97% 65%;
-  --success: 152 56% 32%;
-  --success-foreground: 152 56% 24%;
-  --success-surface: 150 60% 96%;
-  --success-border: 150 40% 78%;
-  --info: 205 87% 36%;
-  --info-foreground: 205 87% 28%;
-  --info-surface: 205 100% 96%;
-  --info-border: 205 75% 80%;
-  --radius: 0.75rem;
+  --warning-foreground: 32 81% 28%;
+  --warning-surface: 42 90% 93%;
+  --warning-muted: 42 80% 86%;
+  --warning-border: 40 70% 62%;
+  --success: 152 50% 28%;
+  --success-foreground: 152 50% 22%;
+  --success-surface: 148 40% 93%;
+  --success-border: 150 30% 70%;
+  --info: 205 70% 32%;
+  --info-foreground: 205 70% 26%;
+  --info-surface: 205 60% 94%;
+  --info-border: 205 40% 74%;
+  --radius: 0.375rem;
 }
 
 .dark {
-  --background: 0 0% 0%;
-  --foreground: 0 0% 98%;
-  --card: 240 6% 10%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 6% 10%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 10% 4%;
-  --secondary: 240 4% 16%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 65%;
-  --accent: 240 4% 16%;
-  --accent-foreground: 0 0% 98%;
-  --brand: 205 100% 45%;
-  --brand-foreground: 0 0% 98%;
+  --background: 240 12% 3%;
+  --foreground: 40 20% 96%;
+  --card: 240 10% 6%;
+  --card-foreground: 40 20% 96%;
+  --popover: 240 10% 7%;
+  --popover-foreground: 40 20% 96%;
+  --primary: 40 20% 96%;
+  --primary-foreground: 240 12% 4%;
+  --secondary: 240 8% 12%;
+  --secondary-foreground: 40 20% 96%;
+  --muted: 240 8% 12%;
+  --muted-foreground: 40 8% 62%;
+  --accent: 240 8% 14%;
+  --accent-foreground: 40 20% 96%;
+  --brand: 225 55% 62%;
+  --brand-foreground: 240 12% 4%;
   --destructive: 0 72% 58%;
-  --destructive-foreground: 0 0% 98%;
-  --destructive-surface: 240 6% 10%;
-  --destructive-border: 0 55% 34%;
-  --border: 240 4% 26%;
-  --input: 240 4% 32%;
-  --ring: 240 5% 84%;
-  --warning: 45 93% 47%;
-  --warning-foreground: 48 96% 77%;
-  --warning-surface: 240 6% 10%;
-  --warning-muted: 240 4% 16%;
-  --warning-border: 32 81% 29%;
-  --success: 152 62% 45%;
-  --success-foreground: 150 65% 72%;
-  --success-surface: 240 6% 10%;
-  --success-border: 152 40% 28%;
-  --info: 205 90% 55%;
-  --info-foreground: 205 88% 78%;
-  --info-surface: 240 6% 10%;
-  --info-border: 205 55% 32%;
+  --destructive-foreground: 40 20% 96%;
+  --destructive-surface: 0 30% 10%;
+  --destructive-border: 0 50% 32%;
+  --border: 240 8% 16%;
+  --input: 240 8% 18%;
+  --ring: 40 20% 84%;
+  --warning: 42 90% 52%;
+  --warning-foreground: 42 90% 72%;
+  --warning-surface: 240 10% 6%;
+  --warning-muted: 240 8% 12%;
+  --warning-border: 32 70% 30%;
+  --success: 152 55% 48%;
+  --success-foreground: 150 60% 72%;
+  --success-surface: 240 10% 6%;
+  --success-border: 152 35% 26%;
+  --info: 205 80% 58%;
+  --info-foreground: 205 80% 78%;
+  --info-surface: 240 10% 6%;
+  --info-border: 205 40% 28%;
 }
 
 @layer base {
@@ -131,7 +131,15 @@
 }
 
 @layer components {
+  .type-display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    line-height: 0.9;
+  }
+
   .type-heading {
+    font-family: var(--font-display);
     @apply font-semibold tracking-tight;
   }
 
@@ -204,33 +212,42 @@
   /* Absolute positioning keeps MapLibre's translate transform relative to the
    * map container origin. */
   position: absolute;
-  width: 22px;
-  height: 22px;
-  cursor: default;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
 }
 
-.train-marker-dot {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+.train-marker-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--train-color, #c45c12);
+  border: 2px solid #f4f1ea;
+  color: var(--train-ink, #f4f1ea);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/*
- * An interpolated marker is a guess between two timetabled calls, not a
- * measured position. A dashed ring reads as "approximate" without relying on
- * colour, which the delayed state already uses.
- */
-.train-marker--estimated .train-marker-dot {
+.dark .train-marker-badge {
+  border-color: #f4f1ea;
+}
+
+.train-marker-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.train-marker--estimated .train-marker-badge {
   border-style: dashed;
-  opacity: 0.8;
 }
 
-.train-marker--delayed .train-marker-dot {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.5),
-    0 0 0 2px #f4a300;
+.train-marker--delayed .train-marker-badge {
   animation: train-delayed-pulse 1.6s ease-in-out infinite;
 }
 
@@ -238,25 +255,14 @@
   0%,
   100% {
     box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.5),
+      0 1px 2px rgba(0, 0, 0, 0.4),
       0 0 0 2px #f4a300;
   }
   50% {
     box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.5),
-      0 0 0 4px rgba(244, 163, 0, 0.55);
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 0 0 3px #f4a300;
   }
-}
-
-.train-marker-icon {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  line-height: 1;
-  transition: transform 0.15s ease-out;
 }
 
 /* Theme-aware panel scrollbars for WebKit and Firefox. */

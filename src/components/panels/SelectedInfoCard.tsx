@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { BoardBlock } from "../layout/BoardBlock";
 import { Button } from "../ui/button";
 import { EtaText } from "../EtaText";
 import { DelayBadge } from "../DelayBadge";
@@ -13,6 +14,8 @@ interface SelectedInfoCardProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
+  /** Prefer this line's colour on the station card when the station serves several. */
+  preferredLineIds?: Set<string>;
   onClose: () => void;
 }
 
@@ -27,15 +30,16 @@ export function SelectedInfoCard({
   lineNameById,
   lineColorById,
   runs,
+  preferredLineIds,
   onClose,
 }: SelectedInfoCardProps) {
   const now = useNow(1000);
 
   if (!selection) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
+      <BoardBlock className="border-dashed p-5 text-center text-xs text-muted-foreground">
         Select a station or train on the map to see live departures.
-      </div>
+      </BoardBlock>
     );
   }
 
@@ -45,7 +49,7 @@ export function SelectedInfoCard({
     const departures = soonestPerLine(upcomingStopsForStation(station, runs, now));
 
     return (
-      <div className="relative overflow-hidden rounded-xl border border-l-4 border-border border-l-brand bg-card/80 p-4 shadow-sm backdrop-blur-sm">
+      <BoardBlock accent={stationAccent(station, departures, lineColorById, preferredLineIds)} className="p-5 pl-6 sm:p-6">
         <div className="flex items-start justify-between gap-2">
           <div className="type-heading min-w-0 flex-1 truncate text-base">{station.name}</div>
           <Button size="icon-sm" variant="ghost" onClick={onClose} className="touch-target shrink-0 text-muted-foreground">
@@ -69,16 +73,16 @@ export function SelectedInfoCard({
             ))
           )}
         </div>
-      </div>
+      </BoardBlock>
     );
   }
 
   const run = runs.find((r) => r.lineId === selection.lineId && r.runRef === selection.runRef);
   if (!run) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
+      <BoardBlock className="border-dashed p-5 text-center text-xs text-muted-foreground">
         This train is no longer being tracked.
-      </div>
+      </BoardBlock>
     );
   }
 
@@ -90,7 +94,7 @@ export function SelectedInfoCard({
   const nextStationName = nextStop ? (stationsById.get(nextStop.stationId)?.name ?? nextStop.stationId) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-l-4 border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm" style={{ borderLeftColor: color }}>
+    <BoardBlock accent={color} className="p-5 pl-6 sm:p-6">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-3 shrink-0 rounded-full ring-2 ring-white" style={{ background: color }} aria-hidden="true" />
@@ -113,6 +117,21 @@ export function SelectedInfoCard({
           <div className="text-muted-foreground italic">Approaching {run.destinationName}</div>
         )}
       </div>
-    </div>
+    </BoardBlock>
   );
+}
+
+function stationAccent(
+  station: StationStatic,
+  departures: ReadonlyArray<{ lineId: string }>,
+  lineColorById: Map<string, string>,
+  preferredLineIds?: Set<string>,
+): string {
+  const preferredDeparture = preferredLineIds && preferredLineIds.size > 0
+    ? departures.find((departure) => preferredLineIds.has(departure.lineId))
+    : undefined;
+  const departure = preferredDeparture ?? departures[0];
+  if (departure) return lineColorById.get(departure.lineId) ?? "hsl(var(--brand))";
+  const lineId = station.lineIds.find((id) => preferredLineIds?.has(id)) ?? station.lineIds[0];
+  return lineColorById.get(lineId ?? "") ?? "hsl(var(--brand))";
 }

@@ -13,7 +13,8 @@ import { VitePWA } from "vite-plugin-pwa";
 // point at "/ptv-train-map/", so nothing resolves and the service worker in
 // particular cannot be tested locally at all.
 export default defineConfig(({ command, isPreview }) => ({
-  base: command === "build" || isPreview ? "/ptv-train-map/" : "/",
+  // Vercel is the root. GitHub Pages still uses the project path.
+  base: process.env.VERCEL ? "/" : command === "build" || isPreview ? "/ptv-train-map/" : "/",
   plugins: [
     react(),
     VitePWA({

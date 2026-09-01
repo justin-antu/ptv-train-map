@@ -1,8 +1,8 @@
-import { SectionCard } from "../layout/SectionCard";
+import { useMemo, useState } from "react";
+import { BoardBlock } from "../layout/BoardBlock";
 import { MapView } from "../MapView";
-import { NetworkStatsCard } from "../panels/NetworkStatsCard";
 import { SelectedInfoCard } from "../panels/SelectedInfoCard";
-import { BorderBeam } from "../ui/border-beam";
+import { Checkbox } from "../ui/checkbox";
 import { NETWORK_SUBTITLE } from "../../config";
 import type { LiveRun, NetworkStaticData, StationStatic } from "../../shared/types";
 import type { Selection } from "../../shared/selection";
@@ -13,15 +13,14 @@ interface NetworkSectionProps {
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  /** Lines drawn on the map: the commuter's favourites, or all of them. */
-  visibleLineIds: Set<string>;
+  /** Lines that serve the current board pair (or the saved line). */
+  routeLineIds: Set<string>;
   selection: Selection;
-  trainsRunning: number;
-  linesActive: number;
   onStationSelect: (stationId: string) => void;
   onTrainSelect: (pos: { lineId: string; runRef: string }) => void;
   onBackgroundClick: () => void;
   onClearSelection: () => void;
+  theme?: "light" | "dark";
 }
 
 /**
@@ -34,30 +33,52 @@ export function NetworkSection({
   lineNameById,
   lineColorById,
   runs,
-  visibleLineIds,
+  routeLineIds,
   selection,
-  trainsRunning,
-  linesActive,
   onStationSelect,
   onTrainSelect,
   onBackgroundClick,
   onClearSelection,
+  theme = "light",
 }: NetworkSectionProps) {
-  const visibleLines = staticData.lines.filter((line) => visibleLineIds.has(line.id));
+  const [showOnlyMyRoute, setShowOnlyMyRoute] = useState(true);
+  const canFocusRoute = routeLineIds.size > 0;
+  const focusedLineIds = useMemo(
+    () => (showOnlyMyRoute && canFocusRoute ? routeLineIds : new Set<string>()),
+    [showOnlyMyRoute, canFocusRoute, routeLineIds],
+  );
+  const focusedLines = staticData.lines.filter((line) => focusedLineIds.has(line.id));
+  const description = focusedLines.length === 1
+    ? `${focusedLines[0].name} on the network`
+    : focusedLines.length > 1
+      ? "Your lines on the network"
+      : "Melbourne Metro";
+  const accent = focusedLines[0]?.color ?? staticData.lines.find((line) => routeLineIds.has(line.id))?.color ?? "hsl(var(--brand))";
 
   return (
-    <SectionCard
-      id="network"
-      title="Network map"
-      description={
-        visibleLines.length === 1
-          ? `Showing the ${visibleLines[0].name} line only`
-          : "Estimated live train positions"
-      }
-    >
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="type-label text-muted-foreground">Network</p>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <label
+          htmlFor="show-only-my-route"
+          className={`flex items-center gap-2 text-sm ${canFocusRoute ? "cursor-pointer text-foreground" : "cursor-not-allowed text-muted-foreground"}`}
+        >
+          <Checkbox
+            id="show-only-my-route"
+            checked={showOnlyMyRoute}
+            disabled={!canFocusRoute}
+            onCheckedChange={(value) => setShowOnlyMyRoute(value === true)}
+          />
+          <span>Show only my route</span>
+        </label>
+      </div>
+
+      <BoardBlock accent={accent} className="h-[50vh] min-h-[320px] lg:h-[34rem]">
         <div
-          className="relative isolate h-[42vh] min-h-[300px] overflow-hidden rounded-xl border border-border lg:h-[30rem]"
+          className="relative isolate h-full"
           aria-label={`${NETWORK_SUBTITLE} live map`}
         >
           <MapView
@@ -65,33 +86,24 @@ export function NetworkSection({
             stationsById={stationsById}
             lineColorById={lineColorById}
             runs={runs}
-            visibleLineIds={visibleLineIds}
+            focusedLineIds={focusedLineIds}
             onStationSelect={onStationSelect}
             onTrainSelect={onTrainSelect}
             onBackgroundClick={onBackgroundClick}
-          />
-          <BorderBeam
-            size={140}
-            duration={10}
-            borderWidth={1}
-            colorFrom="hsl(var(--muted-foreground) / 0.3)"
-            colorTo="hsl(var(--brand) / 0.82)"
-            className="opacity-70 dark:opacity-60"
+            theme={theme}
           />
         </div>
+      </BoardBlock>
 
-        <div className="flex min-w-0 flex-col gap-3">
-          <NetworkStatsCard trainsRunning={trainsRunning} linesActive={linesActive} />
-          <SelectedInfoCard
-            selection={selection}
-            stationsById={stationsById}
-            lineNameById={lineNameById}
-            lineColorById={lineColorById}
-            runs={runs}
-            onClose={onClearSelection}
-          />
-        </div>
-      </div>
-    </SectionCard>
+      <SelectedInfoCard
+        selection={selection}
+        stationsById={stationsById}
+        lineNameById={lineNameById}
+        lineColorById={lineColorById}
+        runs={runs}
+        preferredLineIds={focusedLineIds.size > 0 ? focusedLineIds : routeLineIds}
+        onClose={onClearSelection}
+      />
+    </div>
   );
 }

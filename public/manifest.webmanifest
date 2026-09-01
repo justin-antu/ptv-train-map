@@ -1,16 +1,16 @@
 {
   "name": "Dude, where's my train?",
-  "short_name": "Dude, Where's my train?",
-  "description": "Melbourne PTV Train Information",
-  "categories": ["travel", "navigation", "utilities", "PTV", "Melbourne", "Train", "Departures", "Alerts", "Network", "Map"],
-  "start_url": ".",
+  "short_name": "Where's my train?",
+  "description": "Your next Metro Trains Melbourne service. Home to work, platform and all.",
+  "categories": ["travel", "navigation", "utilities"],
+  "start_url": "./#home",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#152c6b",
-  "theme_color": "#152c6b",
+  "background_color": "#f4f1ea",
+  "theme_color": "#f4f1ea",
   "shortcuts": [
-    { "name": "Live departures", "short_name": "Departures", "url": "./#departures" },
+    { "name": "Next train", "short_name": "Home", "url": "./#home" },
     { "name": "Service alerts", "short_name": "Alerts", "url": "./#alerts" }
   ],
   "icons": [

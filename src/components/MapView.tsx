@@ -4,7 +4,7 @@ import maplibregl from "maplibre-gl";
 // lazily-loaded map chunk instead of blocking the first paint of every visit.
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
-import { addLineAndStations, createMap, queryStationIdAt, setVisibleLines, setupStationHoverCursor } from "../map/map";
+import { addLineAndStations, createMap, queryStationIdAt, setFocusedLines, setupStationHoverCursor } from "../map/map";
 import { startAnimationLoop } from "../trains/animate";
 import { buildInterpolationContext, computeTrainPositions, type TrainPosition } from "../trains/interpolate";
 import { TrainMarkerLayer } from "../trains/trainMarkers";
@@ -15,10 +15,12 @@ interface MapViewProps {
   stationsById: Map<string, StationStatic>;
   lineColorById: Map<string, string>;
   runs: LiveRun[];
-  visibleLineIds: Set<string>;
+  /** Commute line(s) to light. The rest of the network stays as a flat diagram. */
+  focusedLineIds: Set<string>;
   onStationSelect: (stationId: string) => void;
   onTrainSelect: (pos: TrainPosition) => void;
   onBackgroundClick: () => void;
+  theme?: "light" | "dark";
 }
 
 /**
@@ -32,34 +34,35 @@ export const MapView = memo(function MapView({
   stationsById,
   lineColorById,
   runs,
-  visibleLineIds,
+  focusedLineIds,
   onStationSelect,
   onTrainSelect,
   onBackgroundClick,
+  theme = "light",
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerLayerRef = useRef<TrainMarkerLayer | null>(null);
   const runsRef = useRef<LiveRun[]>(runs);
-  const visibleLineIdsRef = useRef<Set<string>>(visibleLineIds);
+  const focusedLineIdsRef = useRef<Set<string>>(focusedLineIds);
 
   useEffect(() => {
     runsRef.current = runs;
   }, [runs]);
 
   useEffect(() => {
-    visibleLineIdsRef.current = visibleLineIds;
-    if (mapRef.current) setVisibleLines(mapRef.current, visibleLineIds);
-  }, [visibleLineIds]);
+    focusedLineIdsRef.current = focusedLineIds;
+    if (mapRef.current) setFocusedLines(mapRef.current, focusedLineIds);
+  }, [focusedLineIds]);
 
   // Mount once with static data and stable callback identities.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const map = createMap(container, staticData);
+    const map = createMap(container, staticData, theme);
     mapRef.current = map;
-    addLineAndStations(map, staticData);
+    addLineAndStations(map, staticData, theme, focusedLineIds);
     setupStationHoverCursor(map);
 
     const interpolationContext = buildInterpolationContext(staticData);
@@ -88,7 +91,10 @@ export const MapView = memo(function MapView({
         staleAfterMs: RUN_STALE_AFTER_MS,
         showBeforeFirstStopMs: RUN_SHOW_BEFORE_FIRST_STOP_MS,
       });
-      const visiblePositions = positions.filter((p) => visibleLineIdsRef.current.has(p.lineId));
+      const focused = focusedLineIdsRef.current;
+      const visiblePositions = focused.size > 0
+        ? positions.filter((p) => focused.has(p.lineId))
+        : positions;
       markerLayer.update(visiblePositions);
     });
 
@@ -100,7 +106,7 @@ export const MapView = memo(function MapView({
       markerLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staticData]);
+  }, [staticData, theme]);
 
   // Sized rather than positioned, deliberately. MapLibre stamps
   // `.maplibregl-map { position: relative }` onto this element, which is the

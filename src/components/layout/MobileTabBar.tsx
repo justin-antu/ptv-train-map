@@ -43,7 +43,9 @@ export function MobileTabBar({ activeSection, onSelect, alertCount, hasCriticalA
                     <span
                       className={cn(
                         "absolute -top-1 -right-2 flex min-w-4 justify-center rounded-full px-1 text-3xs leading-4 font-semibold",
-                        hasCriticalAlert ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-surface",
+                        hasCriticalAlert
+                          ? "bg-destructive text-destructive-foreground"
+                          : "bg-[hsl(42_90%_52%)] text-[hsl(30_12%_8%)]",
                       )}
                     >
                       <span aria-hidden="true">{alertCount > 9 ? "9+" : alertCount}</span>

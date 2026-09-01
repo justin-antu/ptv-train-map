@@ -8,6 +8,7 @@ export default {
     extend: {
       fontFamily: {
         sans: ["var(--font-sans)"],
+        display: ["var(--font-display)"],
         mono: ["var(--font-mono)"],
       },
       // Below Tailwind's `xs` (0.75rem) the codebase previously reached for

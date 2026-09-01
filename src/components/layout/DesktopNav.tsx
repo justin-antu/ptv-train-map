@@ -10,7 +10,7 @@ interface DesktopNavProps {
   hasCriticalAlert: boolean;
 }
 
-/** Section links for the desktop single-scroll layout. */
+/** Section links for the desktop header. */
 export function DesktopNav({ activeSection, onNavigate, alertCount, hasCriticalAlert }: DesktopNavProps) {
   return (
     <nav aria-label="Sections" className="hidden items-center gap-1 lg:flex">
@@ -30,13 +30,12 @@ export function DesktopNav({ activeSection, onNavigate, alertCount, hasCriticalA
         >
           {label}
           {id === "alerts" && alertCount > 0 && (
-            // Outlined rather than filled, unlike the mobile tab badge: this one
-            // sits inline with the label instead of over an icon, and a solid
-            // block of colour there reads as a selected state.
             <span
               className={cn(
-                "type-numeric flex min-w-4 justify-center rounded-full border px-1 text-3xs leading-4 font-semibold",
-                hasCriticalAlert ? "border-destructive text-destructive" : "border-border text-muted-foreground",
+                "type-numeric flex min-w-4 justify-center rounded-full px-1 text-3xs leading-4 font-semibold",
+                hasCriticalAlert
+                  ? "bg-destructive text-destructive-foreground"
+                  : "bg-[hsl(42_90%_52%)] text-[hsl(30_12%_8%)]",
               )}
             >
               <span aria-hidden="true">{alertCount > 9 ? "9+" : alertCount}</span>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://justin-antu.github.io/ptv-train-map/sitemap.xml
