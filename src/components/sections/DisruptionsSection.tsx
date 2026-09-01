@@ -43,30 +43,22 @@ interface DisruptionsSectionProps {
   lineOrder: string[];
   lineNameById: Map<string, string>;
   lineColorById: Map<string, string>;
-  /** The app-wide line scope, shared with the header control and every other section. */
-  scopeLineId: string | null;
-  onScopeLineChange: (lineId: string | null) => void;
 }
 
 /**
  * Network disruption feed, split by whether it affects travel now.
  *
- * The line chips are the scope control rather than a second, private filter:
- * picking one here is the same act as picking one in the header, so the alerts
- * feed and the departure board can never disagree about which line the reader
- * is looking at. That equivalence is why they are safe to drop on phones,
- * where sixteen of them cost five rows above the first alert; the header
- * picker reaches the same state from anywhere.
+ * Line chips filter this page only. They must not write the commute line —
+ * that emptied the home board when a different line was selected here.
  */
 export function DisruptionsSection({
   disruptionsByLine,
   lineOrder,
   lineNameById,
   lineColorById,
-  scopeLineId,
-  onScopeLineChange,
 }: DisruptionsSectionProps) {
   const now = useNow(60_000);
+  const [alertLineId, setAlertLineId] = useState<string | null>(null);
   const [mutedSeverities, setMutedSeverities] = useState<DisruptionSeverity[]>([]);
 
   const all = useMemo(() => aggregateDisruptions(disruptionsByLine, lineOrder), [disruptionsByLine, lineOrder]);
@@ -79,8 +71,8 @@ export function DisruptionsSection({
   }, [all, lineOrder]);
 
   const scoped = useMemo(
-    () => (scopeLineId ? all.filter((entry) => entry.lineIds.includes(scopeLineId)) : all),
-    [all, scopeLineId],
+    () => (alertLineId ? all.filter((entry) => entry.lineIds.includes(alertLineId)) : all),
+    [all, alertLineId],
   );
 
   const severityCounts = useMemo(() => {
@@ -100,7 +92,7 @@ export function DisruptionsSection({
     return groups;
   }, [visible, now]);
 
-  const scopeLineName = scopeLineId ? (lineNameById.get(scopeLineId) ?? scopeLineId) : null;
+  const scopeLineName = alertLineId ? (lineNameById.get(alertLineId) ?? alertLineId) : null;
 
   // A filter that silently removes most of a feed is the commonest way people
   // conclude the data is broken, so the heading says how much it is hiding.
@@ -135,17 +127,16 @@ export function DisruptionsSection({
           <div className="flex flex-col gap-2">
             {linesWithAlerts.length > 1 && (
               // Desktop only. On a phone these wrapped to five rows of chips
-              // and pushed the actual alerts below the fold, to do a job the
-              // header's line picker already does from every section.
+              // and pushed the actual alerts below the fold.
               <div className="hidden flex-wrap items-center gap-1.5 lg:flex" role="group" aria-label="Filter alerts by line">
                 {linesWithAlerts.map((lineId) => {
-                  const selected = scopeLineId === lineId;
+                  const selected = alertLineId === lineId;
                   return (
                     <button
                       key={lineId}
                       type="button"
                       aria-pressed={selected}
-                      onClick={() => onScopeLineChange(selected ? null : lineId)}
+                      onClick={() => setAlertLineId(selected ? null : lineId)}
                       className={cn(
                         "flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
                         selected

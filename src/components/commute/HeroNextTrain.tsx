@@ -20,7 +20,6 @@ interface HeroNextTrainProps {
   lineColor: string;
   pattern: string;
   nextAlternative?: { destinationName: string; timeUtc: string };
-  isScheduleOnly: boolean;
 }
 
 /**
@@ -37,7 +36,6 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
     lineColor,
     pattern,
     nextAlternative,
-    isScheduleOnly,
   },
   ref,
 ) {
@@ -128,6 +126,17 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
             )}
             <span className="text-sm">{scheduled}</span>
             {isRetimed && <span className="text-xs text-warning">expected {expected}</span>}
+            <span
+              className={cn(
+                "text-xs uppercase tracking-widest",
+                status.tone === "success" && "text-success",
+                status.tone === "warning" && "text-warning",
+                status.tone === "destructive" && "text-destructive",
+                status.tone === "muted" && "text-muted-foreground",
+              )}
+            >
+              {status.label.toLowerCase()}
+            </span>
           </div>
         )}
       </div>
@@ -150,22 +159,6 @@ export const HeroNextTrain = forwardRef<HTMLElement, HeroNextTrainProps>(functio
         {lineName} line
         <span className="mx-2">·</span>
         {pattern}
-        <span className="mx-2">·</span>
-        <span
-          className={cn(
-            status.tone === "success" && "text-success",
-            status.tone === "warning" && "text-warning",
-            status.tone === "destructive" && "text-destructive",
-          )}
-        >
-          {status.label.toLowerCase()}
-        </span>
-        {!isScheduleOnly && row.isRealtime && (
-          <>
-            <span className="mx-2">·</span>
-            {row.isPropagated ? "live (estimated)" : "live"}
-          </>
-        )}
       </p>
       {row.isCancelled && nextAlternative && (
         <p className="mt-3 pl-3 font-mono text-xs text-muted-foreground">
@@ -185,8 +178,5 @@ function arrivalCall(row: DepartureRow, destinationStationId?: string | null): s
 }
 
 function ticketStamp(now: number): string {
-  const date = new Date(now);
-  const day = date.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return `${day} · ${time}`;
+  return new Date(now).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 }

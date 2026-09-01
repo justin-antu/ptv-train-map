@@ -12,7 +12,6 @@ import { useStaticData } from "./hooks/useStaticData";
 import { useLiveData } from "./hooks/useLiveData";
 import { useTimetableData } from "./hooks/useTimetableData";
 import { useCommute } from "./hooks/useCommute";
-import { useFavouriteLineFilter } from "./hooks/useFavouriteLineFilter";
 import { aggregateDisruptions, summariseLineDisruptions } from "./data/disruptions";
 import { countActiveRuns } from "./trains/interpolate";
 import { describeFreshness } from "./data/freshness";
@@ -34,18 +33,14 @@ export default function App() {
 
   const allLineIds = useMemo(() => staticData?.lines.map((l) => l.id) ?? [], [staticData]);
   const commute = useCommute();
-  const favouriteLineIds = useMemo(() => (commute.lineId ? [commute.lineId] : []), [commute.lineId]);
-  const lineFilter = useFavouriteLineFilter(favouriteLineIds, allLineIds);
-
   const stationsById = useMemo(() => new Map((staticData?.stations ?? []).map((s) => [s.id, s])), [staticData]);
   const lineNameById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.name])), [staticData]);
   const lineColorById = useMemo(() => new Map((staticData?.lines ?? []).map((l) => [l.id, l.color])), [staticData]);
   const routeLineIds = useMemo(() => {
-    if (commute.lineId) return new Set([commute.lineId]);
     const originLines = stationsById.get(commute.originStationId ?? "")?.lineIds ?? [];
     const destinationLines = new Set(stationsById.get(commute.destinationStationId ?? "")?.lineIds ?? []);
     return new Set(originLines.filter((id) => destinationLines.has(id)));
-  }, [commute.lineId, commute.originStationId, commute.destinationStationId, stationsById]);
+  }, [commute.originStationId, commute.destinationStationId, stationsById]);
 
   useEffect(() => {
     if (live.needsScheduleFallback) setTimetableEnabled(true);
@@ -65,16 +60,12 @@ export default function App() {
 
   const boardLineIds = useMemo(() => {
     const relevant = new Set<string>();
-    if (lineFilter.hasPreference) {
-      for (const lineId of lineFilter.lineIds) relevant.add(lineId);
-    } else {
-      for (const stationId of [commute.originStationId, commute.destinationStationId]) {
-        const station = stationId ? stationsById.get(stationId) : undefined;
-        for (const lineId of station?.lineIds ?? []) relevant.add(lineId);
-      }
+    for (const stationId of [commute.originStationId, commute.destinationStationId]) {
+      const station = stationId ? stationsById.get(stationId) : undefined;
+      for (const lineId of station?.lineIds ?? []) relevant.add(lineId);
     }
     return allLineIds.filter((lineId) => relevant.has(lineId));
-  }, [lineFilter, commute.originStationId, commute.destinationStationId, stationsById, allLineIds]);
+  }, [commute.originStationId, commute.destinationStationId, stationsById, allLineIds]);
 
   const boardDisruptions = useMemo(
     () => summariseLineDisruptions(live.disruptionsByLine, boardLineIds),
@@ -172,7 +163,6 @@ export default function App() {
               commute={commute}
               criticalIncident={criticalIncident}
               isInitialising={live.isInitialising}
-              isScheduleOnly={live.isScheduleOnly}
               freshnessDetail={freshness.detail}
               trainsRunning={trainsRunningNow}
               linesActive={linesActive}
@@ -201,8 +191,8 @@ export default function App() {
               data={timetable.data}
               loading={timetable.loading || !timetableEnabled}
               error={timetable.error}
-              scopeLineId={commute.lineId}
-              onClearScope={() => commute.setLine(null)}
+              scopeLineId={null}
+              onClearScope={() => undefined}
               focus={null}
             />
           ),
@@ -212,8 +202,6 @@ export default function App() {
               lineOrder={allLineIds}
               lineNameById={lineNameById}
               lineColorById={lineColorById}
-              scopeLineId={commute.lineId}
-              onScopeLineChange={commute.setLine}
             />
           ),
         }}
