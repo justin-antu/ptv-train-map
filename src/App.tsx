@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import { MapPinned } from "lucide-react";
 import trainLogo from "./assets/train-logo.png";
 import { AppShell } from "./components/layout/AppShell";
 import { LiveDeparturesSection } from "./components/sections/LiveDeparturesSection";
@@ -164,6 +165,7 @@ export default function App() {
               preferences={preferences}
               disruptionSummary={boardDisruptions}
               notifications={notifications}
+              isInitialising={live.isInitialising}
               generatedAtUtc={live.generatedAtUtc}
               feedTimestampUtc={live.feedTimestampUtc}
               isScheduleOnly={live.isScheduleOnly}
@@ -215,13 +217,21 @@ export default function App() {
   );
 }
 
-/** Holds the map card's footprint while its chunk downloads, so nothing below it jumps. */
+/**
+ * Holds the map card's footprint while its chunk downloads, so nothing below
+ * it jumps. Says so in words as well: a bare card in the card colour is
+ * indistinguishable from a map that failed to render, which is exactly how it
+ * was read on a slow connection.
+ */
 function NetworkSectionFallback() {
   return (
     <div
-      className="h-[42vh] min-h-[300px] animate-pulse rounded-2xl border border-border bg-card lg:h-[34rem]"
+      className="flex h-[42vh] min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-muted/40 lg:h-[34rem]"
       role="status"
       aria-label="Loading the network map"
-    />
+    >
+      <MapPinned className="size-7 text-muted-foreground/50 motion-safe:animate-pulse" aria-hidden="true" />
+      <p className="text-xs text-muted-foreground">Loading the network map…</p>
+    </div>
   );
 }

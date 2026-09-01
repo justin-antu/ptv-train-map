@@ -6,6 +6,15 @@ import { buildScheduledSnapshot } from "../data/scheduledSnapshot";
 
 export interface LiveDataState {
   runs: LiveRun[];
+  /**
+   * True until either a snapshot or the timetable fallback has arrived.
+   *
+   * Callers need this to tell "no departures" from "no data yet". Both look
+   * like an empty `runs`, and the board used to state the former while the
+   * latter was true — announcing that the last train had gone while the
+   * snapshot was still downloading.
+   */
+  isInitialising: boolean;
   /** True when every run carries timetable times only, with no real-time layer. */
   isScheduleOnly: boolean;
   generatedAtUtc: string | null;
@@ -44,6 +53,7 @@ export function useLiveData(timetable: NetworkTimetableData | null): LiveDataSta
   return useMemo(
     () => ({
       runs: effective?.runs ?? [],
+      isInitialising: effective === null,
       isScheduleOnly: effective?.isScheduleOnly === true,
       generatedAtUtc: effective?.generatedAtUtc ?? null,
       feedTimestampUtc: effective?.feedTimestampUtc ?? null,

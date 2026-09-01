@@ -9,6 +9,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { DepartureRowItem } from "../departures/DepartureRowItem";
 import { DeparturesEmptyState, type EmptyReason } from "../departures/DeparturesEmptyState";
+import { DeparturesSkeleton } from "../departures/DeparturesSkeleton";
 import { useNow } from "../../hooks/useNow";
 import { departureRowsForStation, describeStoppingPattern, type DepartureRow } from "../../data/departures";
 import { describeFreshness } from "../../data/freshness";
@@ -34,6 +35,8 @@ interface LiveDeparturesSectionProps {
   /** Alerts on the lines this board is currently showing. */
   disruptionSummary: LineDisruptionSummary;
   notifications: NotificationsController;
+  /** True while the first snapshot is still on its way, so an empty board means nothing yet. */
+  isInitialising: boolean;
   generatedAtUtc: string | null;
   feedTimestampUtc: string | null;
   isScheduleOnly: boolean;
@@ -59,6 +62,7 @@ export function LiveDeparturesSection({
   preferences,
   disruptionSummary,
   notifications,
+  isInitialising,
   generatedAtUtc,
   feedTimestampUtc,
   isScheduleOnly,
@@ -132,19 +136,25 @@ export function LiveDeparturesSection({
 
   // Counts only. Anything time-derived here would be re-announced every second.
   const cancelledCount = rows.length - runnable.length;
-  const announcement = origin
-    ? [
-      `${rows.length} ${rows.length === 1 ? "departure" : "departures"}`,
-      `from ${origin.name}`,
-      destination ? `stopping at ${destination.name}` : null,
-      selectedLine ? `on the ${selectedLine.name} line` : null,
-      cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
-    ].filter(Boolean).join(", ")
-    : "No departure station chosen";
+  const announcement = !origin
+    ? "No departure station chosen"
+    : isInitialising
+      ? "Loading departures"
+      : [
+        `${rows.length} ${rows.length === 1 ? "departure" : "departures"}`,
+        `from ${origin.name}`,
+        destination ? `stopping at ${destination.name}` : null,
+        selectedLine ? `on the ${selectedLine.name} line` : null,
+        cancelledCount > 0 ? `${cancelledCount} cancelled` : null,
+      ].filter(Boolean).join(", ");
 
   const emptyReason = useMemo<EmptyReason | null>(() => {
     if (!origin) return { kind: "no-origin" };
     if (rows.length > 0) return null;
+    // Every reason below explains an *absence*. None of them is true yet when
+    // the snapshot has not arrived, and the fall-through case in particular
+    // would announce that the last train had gone.
+    if (isInitialising) return null;
     if (selectedLine && !selectedLine.stationIds.includes(origin.id)) {
       return { kind: "line-excludes-origin", originName: origin.name, lineName: selectedLine.name };
     }
@@ -159,7 +169,11 @@ export function LiveDeparturesSection({
         : { kind: "unreachable", originName: origin.name, destinationName: destination.name };
     }
     return { kind: "none", originName: origin.name };
-  }, [origin, destination, selectedLine, rows.length, destinationOnly.length, unfiltered.length, runs]);
+  }, [origin, destination, selectedLine, rows.length, destinationOnly.length, unfiltered.length, runs, isInitialising]);
+
+  // `no-origin` is knowable immediately from stored preferences, so that state
+  // still shows during loading rather than being masked by placeholders.
+  const showSkeleton = isInitialising && rows.length === 0 && origin !== undefined;
 
   // All-cancelled is its own state: the services exist, so "no departures"
   // would be a lie, and the useful next step is the alerts feed.
@@ -313,7 +327,9 @@ export function LiveDeparturesSection({
           </p>
         )}
 
-        {allCancelled && origin ? (
+        {showSkeleton ? (
+          <DeparturesSkeleton />
+        ) : allCancelled && origin ? (
           <DeparturesEmptyState
             reason={{ kind: "all-cancelled", originName: origin.name, count: rows.length }}
             onClearLine={() => preferences.setLine(null)}
