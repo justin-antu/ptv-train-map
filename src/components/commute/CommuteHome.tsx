@@ -143,11 +143,6 @@ export function CommuteHome({
                 </div>
               </>
             ) : null}
-            {origin?.offCanonicalAlignment && (
-              <p className="font-mono text-xs text-muted-foreground">
-                {origin.name} sits off the drawn City Loop alignment. Times are real; the map line may not pass through this station.
-              </p>
-            )}
             {install.visible && (
               <p className="font-mono text-xs text-muted-foreground">
                 Add this to your home screen for the next weekday.
