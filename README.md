@@ -14,13 +14,13 @@ A static, mobile-first React application for Metro Trains Melbourne commuters. I
 - Full daily line timetables for eight Melbourne dates, station-first by default with hour grouping, a "now" marker and a persistent jump-to-now. The full service-by-station grid is a desktop toggle.
 - Timetable services are clustered by stopping pattern, not only by direction, so named variants such as "via City Loop" can be selected directly.
 - Delay indicators for predictions at least three minutes behind schedule, and a data-freshness ladder that degrades to labelled scheduled times rather than going blank.
-- Opt-in browser notifications for an approaching train. Permission is requested only from the bell control on the departures board.
+- Opt-in browser notifications for an approaching train, while the application is open. Permission is requested only from the bell control on the departures board.
 - Every section is a collapsible card whose state persists, and navigation expands a collapsed target before scrolling to it.
 - Bottom tab navigation on phones and a single scrolling page on desktop, both driven by the same four sections. Pull to refresh re-polls live data on mobile.
 - All preferences — stations, lines, notifications, and theme — are stored in `localStorage`. There are no accounts.
 - Light theme by default with optional dark interface chrome. The map remains on the light CARTO Positron basemap in both themes.
 - A single theme configuration file drives every interface colour, exposed as Tailwind design tokens. Self-hosted IBM Plex Mono throughout, and local Magic UI-style components including the map Border Beam.
-- Installable PWA presentation. Offline operation is not supported because the application depends on refreshed service data.
+- Installable PWA with offline support. A service worker precaches the application shell and caches the three data artifacts, so the last known departures open with no reception and are labelled by the same freshness ladder.
 
 ## In-scope lines
 
@@ -60,15 +60,17 @@ Each realtime `trip_id` is resolved through the calendar active on its `start_da
 
 The script falls back to a schedule-only snapshot when the feed is unreachable.
 
-The `refresh-data.yml` workflow runs every five minutes and commits each changed snapshot. An explicit deployment dispatch follows changed data because pushes made with the workflow `GITHUB_TOKEN` do not trigger other push workflows.
+The `refresh-data.yml` workflow fetches and commits every four minutes, and an explicit deployment dispatch follows each changed snapshot because pushes made with the workflow `GITHUB_TOKEN` do not trigger other push workflows.
 
-The frontend polls the committed live snapshot every 30 seconds and recomputes train positions in a shared animation loop.
+It does this as a loop of fourteen iterations within a single run, which then dispatches its successor, rather than on a frequent cron. GitHub treats scheduled workflows as best effort and drops high-frequency ones under load: a `*/5` schedule was in practice honoured in short bursts a few times a day, with two- to six-hour gaps in between, so an 8am departures board was routinely reading a snapshot taken before midnight. The hourly `schedule` that remains is only a watchdog to restart a broken chain, `concurrency` holds the group to one running and one pending run so the chain cannot multiply, and `timeout-minutes` bounds a wedged run.
+
+The frontend polls the committed live snapshot every 30 seconds and recomputes train positions in a shared animation loop. Polling pauses while the page is hidden and fetches immediately on return, and a failed poll leaves the previous snapshot in place rather than blanking the board.
 
 ### Frontend
 
 The interface is implemented with React 19, TypeScript, Tailwind CSS, Radix UI primitives, Motion, local Magic UI-style components, and MapLibre GL JS. The map uses CARTO Positron raster tiles, keyed by `VITE_CARTO_BASEMAP_KEY`, and does not change style when the interface theme changes.
 
-Content is organised into four sections — Departures, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all four as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map.
+Content is organised into four sections — Departures, Network, Timetable, and Alerts — in commuter priority order. Phones show one section at a time behind a bottom tab bar; desktop renders all four as a single scrolling page whose navigation highlight follows the section in view. The active section is mirrored into the URL fragment, so `#alerts` can be shared or bookmarked. On mobile a section stays mounted once opened, which means MapLibre is never created for a commuter who only checks departures, and is not rebuilt when they return to the map. The Network section is also a lazy chunk, so that commuter downloads 162KB rather than 388KB compressed; the service worker precaches the map chunk in the background afterwards, so it still works offline.
 
 Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeTokens` publishes that definition as a stylesheet containing a `:root` and a `.dark` block, so switching themes remains a single class toggle and the values in `src/index.css` act only as first-paint fallbacks. The map Border Beam is decorative and does not affect map interaction.
 
@@ -87,7 +89,8 @@ Every interface colour comes from `src/theme/defaultTheme.ts`. `installThemeToke
 - **Services added on the day are reconstructed from the realtime feed alone.** They have no timetable entry, so their advertised time is treated as their scheduled time and no delay is reported against them.
 - **Trip planning is not implemented.** The destination field filters departures; it does not search journeys, interchanges, or other modes.
 - **Live data requires configured credentials and a successful refresh.** When no live artifact is available, the interface falls back to genuine scheduled times from the shipped timetable, clearly labelled as timetable-only. No synthetic services are ever displayed.
-- **The PWA does not provide offline service data.**
+- **Offline data is the last data this device downloaded.** The service worker serves `network-live.json` network-first with a three-second timeout, and the static and timetable artifacts stale-while-revalidate. With no reception the board still renders, but its times are as old as the last successful fetch and are labelled accordingly.
+- **Arrival notifications only fire while the application is open.** The check is a foreground timer, which browsers throttle in a background tab and stop on a locked phone. Real background alerts need a push service holding subscriptions, which a static site has no way to provide.
 
 ## Project structure
 
@@ -185,7 +188,7 @@ npm run generate:timetable     # Generate eight Melbourne dates from GTFS_DIR
 
 Add `VIC_GTFS_R_KEY`, `PTV_DEV_ID`, `PTV_API_KEY` and `VITE_CARTO_BASEMAP_KEY` as repository Actions secrets.
 
-Without `VIC_GTFS_R_KEY` the live refresh publishes a schedule-only snapshot rather than failing. Without the PTV pair it omits disruptions, and timetable generation reports PTV route validation as unavailable. `VITE_CARTO_BASEMAP_KEY` is required: `deploy.yml` fails the build when it is empty, because the alternative is silently shipping watermarked tiles.
+`VIC_GTFS_R_KEY` and `VITE_CARTO_BASEMAP_KEY` are both required, and their workflows fail loudly when either is empty. A keyless refresh would publish a valid-looking snapshot carrying timetable times and no real-time layer at all, and a keyless build would silently ship watermarked tiles; in both cases the failure is otherwise invisible until someone notices the result. Without the PTV pair the refresh omits disruptions, and timetable generation reports PTV route validation as unavailable.
 
 Configure GitHub Pages with **Settings → Pages → Source → GitHub Actions**.
 

@@ -191,8 +191,13 @@ export function LiveDeparturesSection({
                 <span className="sr-only">Arrival alerts {notifications.enabled ? "on" : "off"}</span>
               </Button>
             </TooltipTrigger>
+            {/* Says "open" because it is: the check is a foreground timer, so
+                a locked phone gets nothing. Promising background alerts would
+                be the kind of lie that makes someone miss a train. */}
             <TooltipContent>
-              {notifications.enabled ? "Arrival alerts on — tap to turn off" : "Notify me ~2 min before a train arrives"}
+              {notifications.enabled
+                ? "Arrival alerts on — fires ~2 min before a train arrives, while the app is open"
+                : "Alert me ~2 min before a train arrives, while the app is open"}
             </TooltipContent>
           </Tooltip>
           {/* Only offered once there is something to undo: a permanently live

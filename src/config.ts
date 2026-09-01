@@ -21,8 +21,8 @@ export const LIVE_POLL_INTERVAL_MS = 30_000;
 
 /**
  * Age at which the live snapshot is called out as stale on the commute board.
- * The refresh workflow runs every five minutes, so this allows a couple of
- * missed runs before warning that departures may no longer be accurate.
+ * The refresh loop publishes every four minutes, so this allows two missed
+ * fetches before warning that departures may no longer be accurate.
  */
 export const LIVE_DATA_STALE_AFTER_MS = 12 * 60_000;
 

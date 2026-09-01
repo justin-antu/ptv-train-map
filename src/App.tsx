@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import trainLogo from "./assets/train-logo.png";
 import { AppShell } from "./components/layout/AppShell";
 import { LiveDeparturesSection } from "./components/sections/LiveDeparturesSection";
-import { NetworkSection } from "./components/sections/NetworkSection";
 import { TimetableSection } from "./components/sections/TimetableSection";
 import { DisruptionsSection } from "./components/sections/DisruptionsSection";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -19,6 +18,14 @@ import { APP_TITLE, RUN_SHOW_BEFORE_FIRST_STOP_MS, RUN_STALE_AFTER_MS } from "./
 import type { DepartureRow } from "./data/departures";
 import type { Selection } from "./shared/selection";
 import type { TimetableFocus } from "./shared/timetableFocus";
+
+// MapLibre and the map style are the single largest thing the app ships, and a
+// commuter who only ever checks departures never opens this tab. Lazily loading
+// it keeps that weight out of the first paint; the chunk is still precached in
+// the background by the service worker, so the map works offline too.
+const NetworkSection = lazy(() =>
+  import("./components/sections/NetworkSection").then((m) => ({ default: m.NetworkSection })),
+);
 
 export default function App() {
   const [theme, setTheme] = useTheme();
@@ -164,21 +171,23 @@ export default function App() {
             />
           ),
           network: (
-            <NetworkSection
-              staticData={staticData}
-              stationsById={stationsById}
-              lineNameById={lineNameById}
-              lineColorById={lineColorById}
-              runs={live.runs}
-              visibleLineIds={lineFilter.effectiveLineIds}
-              selection={selection}
-              trainsRunning={trainsRunningNow}
-              linesActive={linesActive}
-              onStationSelect={handleStationSelect}
-              onTrainSelect={handleTrainSelect}
-              onBackgroundClick={handleBackgroundClick}
-              onClearSelection={handleBackgroundClick}
-            />
+            <Suspense fallback={<NetworkSectionFallback />}>
+              <NetworkSection
+                staticData={staticData}
+                stationsById={stationsById}
+                lineNameById={lineNameById}
+                lineColorById={lineColorById}
+                runs={live.runs}
+                visibleLineIds={lineFilter.effectiveLineIds}
+                selection={selection}
+                trainsRunning={trainsRunningNow}
+                linesActive={linesActive}
+                onStationSelect={handleStationSelect}
+                onTrainSelect={handleTrainSelect}
+                onBackgroundClick={handleBackgroundClick}
+                onClearSelection={handleBackgroundClick}
+              />
+            </Suspense>
           ),
           timetable: (
             <TimetableSection
@@ -203,5 +212,16 @@ export default function App() {
         }}
       />
     </TooltipProvider>
+  );
+}
+
+/** Holds the map card's footprint while its chunk downloads, so nothing below it jumps. */
+function NetworkSectionFallback() {
+  return (
+    <div
+      className="h-[42vh] min-h-[300px] animate-pulse rounded-2xl border border-border bg-card lg:h-[34rem]"
+      role="status"
+      aria-label="Loading the network map"
+    />
   );
 }

@@ -34,6 +34,12 @@ export interface NotificationsController {
  * train is within `NOTIFY_THRESHOLD_MS`. Notifications are strictly opt-in:
  * `Notification.requestPermission()` is only ever called from `toggle()`,
  * which must only be invoked by the toggle control's direct user gesture.
+ *
+ * This only works while the page is open: it is a foreground timer, which
+ * browsers throttle in a background tab and stop entirely on a locked phone.
+ * Real background alerts need a push service and a server to hold
+ * subscriptions, neither of which a static site on Pages has. The toggle's
+ * tooltip says "while the app is open" for exactly this reason.
  */
 export function useNotifications(
   favouriteId: string | null,

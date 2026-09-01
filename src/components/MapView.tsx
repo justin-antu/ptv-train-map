@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
+// Imported here rather than in main.tsx so the stylesheet travels with the
+// lazily-loaded map chunk instead of blocking the first paint of every visit.
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { LiveRun, NetworkStaticData, StationStatic } from "../shared/types";
 import { addLineAndStations, createMap, queryStationIdAt, setVisibleLines, setupStationHoverCursor } from "../map/map";
 import { startAnimationLoop } from "../trains/animate";
